@@ -345,7 +345,8 @@ def main():
         dp.add_handler(CallbackQueryHandler(show_approved_ads, pattern="^show_approved_ads$"))
         dp.add_handler(CallbackQueryHandler(show_all_ads, pattern="^show_all_ads$"))
 
-        updater.start_polling()
+        
+        updater.start_webhook()
         updater.idle()
         keep_alive()
 
