@@ -315,6 +315,7 @@ def button_handler(update: Update, context: CallbackContext):
                 show_ads(update, context)
 
 def main():
+        PORT = int(os.environ.get("PORT", 8443))
         updater = Updater(TOKEN, use_context=True)
         dp = updater.dispatcher
 
@@ -346,7 +347,10 @@ def main():
         dp.add_handler(CallbackQueryHandler(show_all_ads, pattern="^show_all_ads$"))
 
         
-        updater.start_webhook()
+        updater.start_webhook( listen="0.0.0.0",
+        port=PORT,
+        url_path=TOKEN,
+        webhook_url=f"https://bolori-car-bot.onrender.com/{TOKEN}")
         updater.idle()
         keep_alive()
 
