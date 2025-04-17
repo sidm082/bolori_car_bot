@@ -265,43 +265,53 @@ def show_all_ads(update: Update, context: CallbackContext):
             query.message.reply_text(ad_text)
 
 def handle_admin_action(update: Update, context: CallbackContext):
-                    query = update.callback_query
-                    query.answer()
-                    if update.effective_user.id not in ADMIN_ID:
-                        query.message.reply_text("❌ دسترسی ممنوع!")
-                        return
-                    action, ad_id = query.data.split("_")
-                    ad_id = int(ad_id)
-                    try:
-                        if action == "approve":
-                            c.execute('UPDATE ads SET status="approved" WHERE id=?', (ad_id,))
-                            conn.commit()
+    query = update.callback_query
+    query.answer()
+    if update.effective_user.id not in ADMIN_ID:
+        query.message.reply_text("❌ دسترسی ممنوع!")
+        return
+    action, ad_id = query.data.split("_")
+    ad_id = int(ad_id)
+    try:
+        if action == "approve":
+            c.execute('UPDATE ads SET status="approved" WHERE id=?', (ad_id,))
+            conn.commit()
 
-                            # دریافت اطلاعات آگهی
-                            ad = c.execute('SELECT title, description, price, photos FROM ads WHERE id=?', (ad_id,)).fetchone()
-                            title, description, price, photo = ad
-                            ad_text = f"📌 عنوان: {title}\n💬 توضیحات: {description}\n💰 قیمت: {price}"
+            # دریافت اطلاعات آگهی
+            ad = c.execute('SELECT title, description, price, photos FROM ads WHERE id=?', (ad_id,)).fetchone()
+            title, description, price, photo = ad
+            ad_text = f"📌 عنوان: {title}\n💬 توضیحات: {description}\n💰 قیمت: {price}"
 
-                            # ارسال آگهی برای همه کاربران
-                            users = c.execute('SELECT user_id FROM users').fetchall()
-                            for (user_id,) in users:
-                                try:
-                                    if photo:
-                                        context.bot.send_photo(chat_id=user_id, photo=photo, caption=ad_text)
-                                    else:
-                                        context.bot.send_message(chat_id=user_id, text=ad_text)
-                                except Exception as e:
-                                    print(f"❌ خطا در ارسال برای {user_id}: {e}")
+            # ارسال آگهی برای همه کاربران
+            users = c.execute('SELECT user_id FROM users').fetchall()
+            for (user_id,) in users:
+                try:
+                    if photo:
+                        context.bot.send_photo(chat_id=user_id, photo=photo, caption=ad_text)
+                    else:
+                        context.bot.send_message(chat_id=user_id, text=ad_text)
+                    
+                    # ارسال متن دلخواه بعد از آگهی
+                    custom_text = """
+📌 متن دلخواه شما بعد از آگهی
+این متن می‌تواند شامل اطلاعاتی مثل:
+- قوانین کانال
+- لینک‌های مفید
+- تبلیغات
+- یا هر چیز دیگری باشد
+"""
+                    context.bot.send_message(chat_id=user_id, text=custom_text)
+                except Exception as e:
+                    print(f"❌ خطا در ارسال برای {user_id}: {e}")
 
-                            query.message.reply_text(f"✅ آگهی {ad_id} تایید شد و برای کاربران ارسال شد.")
-                        elif action == "reject":
-                            c.execute('UPDATE ads SET status="rejected" WHERE id=?', (ad_id,))
-                            conn.commit()
-                            query.message.reply_text(f"🚫 آگهی {ad_id} رد شد.")
-                    except sqlite3.Error as e:
-                        print(f"Database error: {e}")
-                        query.message.reply_text("❌ خطایی رخ داد.")
-
+            query.message.reply_text(f"✅ آگهی {ad_id} تایید شد و برای کاربران ارسال شد.")
+        elif action == "reject":
+            c.execute('UPDATE ads SET status="rejected" WHERE id=?', (ad_id,))
+            conn.commit()
+            query.message.reply_text(f"🚫 آگهی {ad_id} رد شد.")
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        query.message.reply_text("❌ خطایی رخ داد.")
 def button_handler(update: Update, context: CallbackContext):
             query = update.callback_query
             query.answer()
