@@ -1,5 +1,6 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, ContextTypes, filters
+from datetime import datetime
 
 TOKEN = '8178162651:AAGujfvy4MsQwcn-sI66v4Y2nyDQkVDPEvI'
 ADMIN_ID = 5677216420  # آیدی عددی ادمین را اینجا قرار بده
@@ -15,7 +16,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users.add(update.effective_user.id)
     keyboard = [
         [KeyboardButton("📝 ثبت آگهی")],
-        [KeyboardButton("📋 تمامی آگهی‌ها")]
+        [KeyboardButton("📋 تمامی آگهی‌ها")],
+        [KeyboardButton("🔔 یادآوری آگهی‌های تایید نشده")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text("یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=reply_markup)
@@ -37,6 +39,12 @@ async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
                 except:
                     continue
         return START
+    elif text == "🔔 یادآوری آگهی‌های تایید نشده":
+        if not ads:
+            await update.message.reply_text("هیچ آگهی تایید نشده‌ای وجود ندارد.")
+        else:
+            await update.message.reply_text("شما هنوز آگهی‌های تایید نشده دارید.")
+        return START
     else:
         await update.message.reply_text("گزینه نامعتبر است. لطفاً از دکمه‌ها استفاده کنید.")
         return START
@@ -53,23 +61,16 @@ async def get_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['price'] = update.message.text
-    await update.message.reply_text("یک یا چند عکس برای آگهی ارسال کنید:")
+    await update.message.reply_text("یک عکس برای آگهی ارسال کنید:")
     return PHOTO
 
 async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # دریافت تمام عکس‌ها
-    photos = update.message.photo
-    photo_files = [photo.file_id for photo in photos]  # ذخیره کردن همه عکس‌ها
+    photo_file = update.message.photo[-1].file_id
+    context.user_data['photo'] = photo_file
 
-    # ذخیره عکس‌ها در داده‌های کاربر
-    if 'photos' not in context.user_data:
-        context.user_data['photos'] = []
-    context.user_data['photos'].extend(photo_files)
-
-    # دکمه ارسال شماره تماس
     button = KeyboardButton("📞 ارسال شماره تماس", request_contact=True)
     reply_markup = ReplyKeyboardMarkup([[button]], resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text("لطفاً شماره تماس خود را ارسال کنید:", reply_markup=reply_markup)
+    await update.message.reply_text(" لطفاً شماره تماس خود را ارسال کنید.)شماره ی شما فقط برای ادمین قابل رویت است):", reply_markup=reply_markup)
     return PHONE
 
 async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -93,10 +94,11 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'title': user_data['title'],
         'description': user_data['description'],
         'price': user_data['price'],
-        'photos': user_data['photos'],
+        'photo': user_data['photo'],
         'phone': user_data['phone'],
         'username': username,
-        'user_id': user.id
+        'user_id': user.id,
+        'date': datetime.now()  # زمان ثبت آگهی
     }
     ads.append(ad)
 
@@ -105,7 +107,7 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_markup = InlineKeyboardMarkup(admin_buttons)
 
     caption = f"📢 آگهی جدید برای تایید\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}\n📞 شماره تماس: {ad['phone']}\n👤 ارسال‌کننده: {ad['username']}"
-    await context.bot.send_photo(chat_id=ADMIN_ID, photo=ad['photos'][0], caption=caption, reply_markup=admin_markup)
+    await context.bot.send_photo(chat_id=ADMIN_ID, photo=ad['photo'], caption=caption, reply_markup=admin_markup)
 
     await query.edit_message_text("آگهی شما برای بررسی به ادمین ارسال شد. ✅")
     return ConversationHandler.END
@@ -122,12 +124,45 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for user_id in users:
         try:
-            for photo in ad['photos']:
-                await context.bot.send_photo(chat_id=user_id, photo=photo, caption=caption)
+            await context.bot.send_photo(chat_id=user_id, photo=ad['photo'], caption=caption)
         except:
             continue
 
     await query.edit_message_text("آگهی با موفقیت تایید و برای کاربران ارسال شد ✅")
+
+async def send_message_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id == ADMIN_ID:
+        message = " ".join(context.args)
+        for user_id in users:
+            try:
+                await context.bot.send_message(chat_id=user_id, text=message)
+            except:
+                continue
+        await update.message.reply_text("پیام به همه کاربران ارسال شد.")
+
+async def filter_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not approved_ads:
+        await update.message.reply_text("هیچ آگهی تایید شده‌ای وجود ندارد.")
+        return
+
+    filter_type = update.message.text.lower()
+    if filter_type == "کمترین قیمت":
+        approved_ads.sort(key=lambda ad: float(ad['price']))
+    elif filter_type == "بیشترین قیمت":
+        approved_ads.sort(key=lambda ad: float(ad['price']), reverse=True)
+    elif filter_type == "جدیدترین":
+        approved_ads.sort(key=lambda ad: ad['date'], reverse=True)
+    elif filter_type == "قدیمی‌ترین":
+        approved_ads.sort(key=lambda ad: ad['date'])
+
+    for ad in approved_ads:
+        caption = f"📢 آگهی تایید شده\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}"
+        try:
+            await update.message.reply_photo(photo=ad['photo'], caption=caption)
+        except:
+            continue
+
+    return START
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("فرآیند لغو شد.")
@@ -152,6 +187,8 @@ def main():
 
     app.add_handler(conv_handler)
     app.add_handler(CallbackQueryHandler(approve, pattern="^approve_\\d+$"))
+    app.add_handler(CommandHandler('send_message', send_message_to_user, filters=filters.User(ADMIN_ID)))
+    app.add_handler(MessageHandler(filters.TEXT, filter_ads))
 
     app.run_polling()
 
