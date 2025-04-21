@@ -53,13 +53,20 @@ async def get_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['price'] = update.message.text
-    await update.message.reply_text("یک عکس برای آگهی ارسال کنید:")
+    await update.message.reply_text("یک یا چند عکس برای آگهی ارسال کنید:")
     return PHOTO
 
 async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    photo_file = update.message.photo[-1].file_id
-    context.user_data['photo'] = photo_file
+    # دریافت تمام عکس‌ها
+    photos = update.message.photo
+    photo_files = [photo.file_id for photo in photos]  # ذخیره کردن همه عکس‌ها
 
+    # ذخیره عکس‌ها در داده‌های کاربر
+    if 'photos' not in context.user_data:
+        context.user_data['photos'] = []
+    context.user_data['photos'].extend(photo_files)
+
+    # دکمه ارسال شماره تماس
     button = KeyboardButton("📞 ارسال شماره تماس", request_contact=True)
     reply_markup = ReplyKeyboardMarkup([[button]], resize_keyboard=True, one_time_keyboard=True)
     await update.message.reply_text("لطفاً شماره تماس خود را ارسال کنید:", reply_markup=reply_markup)
@@ -86,7 +93,7 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'title': user_data['title'],
         'description': user_data['description'],
         'price': user_data['price'],
-        'photo': user_data['photo'],
+        'photos': user_data['photos'],
         'phone': user_data['phone'],
         'username': username,
         'user_id': user.id
@@ -98,7 +105,7 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_markup = InlineKeyboardMarkup(admin_buttons)
 
     caption = f"📢 آگهی جدید برای تایید\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}\n📞 شماره تماس: {ad['phone']}\n👤 ارسال‌کننده: {ad['username']}"
-    await context.bot.send_photo(chat_id=ADMIN_ID, photo=ad['photo'], caption=caption, reply_markup=admin_markup)
+    await context.bot.send_photo(chat_id=ADMIN_ID, photo=ad['photos'][0], caption=caption, reply_markup=admin_markup)
 
     await query.edit_message_text("آگهی شما برای بررسی به ادمین ارسال شد. ✅")
     return ConversationHandler.END
@@ -111,11 +118,12 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ad = ads[index]
     approved_ads.append(ad)
 
-    caption = f"📢 آگهی تایید شده\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}\n👤 ارسال‌کننده: {ad['username']}"
+    caption = f"📢 آگهی تایید شده\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}"
 
     for user_id in users:
         try:
-            await context.bot.send_photo(chat_id=user_id, photo=ad['photo'], caption=caption)
+            for photo in ad['photos']:
+                await context.bot.send_photo(chat_id=user_id, photo=photo, caption=caption)
         except:
             continue
 
