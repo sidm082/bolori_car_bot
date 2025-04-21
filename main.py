@@ -70,7 +70,7 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     button = KeyboardButton("📞 ارسال شماره تماس", request_contact=True)
     reply_markup = ReplyKeyboardMarkup([[button]], resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text(" لطفاً شماره تماس خود را ارسال کنید.)شماره ی شما فقط برای ادمین قابل رویت است):", reply_markup=reply_markup)
+    await update.message.reply_text("لطفا شماره تماس خود را وارد کنید.توجه داشته باشید که شماره ی فقط برای ادمین قابل رویت است.", reply_markup=reply_markup)
     return PHONE
 
 async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -106,7 +106,7 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_buttons = [[InlineKeyboardButton("✅ تایید آگهی", callback_data=f"approve_{len(ads)-1}")]]
     admin_markup = InlineKeyboardMarkup(admin_buttons)
 
-    caption = f"📢 آگهی جدید برای تایید\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}\n📞 شماره تماس: {ad['phone']}\n👤 ارسال‌کننده: {ad['username']}"
+    caption = f"📢 آگهی جدید برای تایید\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}\n📞 شماره تماس: {ad['phone']}"
     await context.bot.send_photo(chat_id=ADMIN_ID, photo=ad['photo'], caption=caption, reply_markup=admin_markup)
 
     await query.edit_message_text("آگهی شما برای بررسی به ادمین ارسال شد. ✅")
