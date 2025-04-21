@@ -1,110 +1,99 @@
-import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler, CallbackQueryHandler
-import os
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, ContextTypes, filters
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+TOKEN = '8178162651:AAGujfvy4MsQwcn-sI66v4Y2nyDQkVDPEvI'
+ADMIN_ID = 5677216420# آیدی عددی ادمین را اینجا قرار بده
 
-# توکن ربات خود را اینجا وارد کنید
-TOKEN = "7581382819:AAFqL1O8igQdRLF5f_K4YvJ1VnrehVqo5IU"
+# مراحل ثبت آگهی
+(START, TITLE, DESCRIPTION, PRICE, PHOTO, CONFIRM, PHONE) = range(7)
 
-# آی‌دی عددی ادمین‌ها
-ADMINS =list(map(int, os.getenv("ADMIN_IDS", "5677216420").split(",")))  # به‌جای این‌ها آی‌دی عددی ادمین‌های خودت رو بذار
-
-# وضعیت‌ها برای ConversationHandler
-TITLE, DESCRIPTION, PRICE, PHOTO, PHONE = range(5)
-
-# دیکشنری برای نگهداری آگهی‌ها
 ads = []
 
-async def start(update: Update, context: CallbackContext):
-    await update.message.reply_text("سلام! به ربات ثبت آگهی خوش اومدی. برای ثبت آگهی /newad رو بزن.")
-
-async def new_ad(update: Update, context: CallbackContext):
-    await update.message.reply_text("عنوان آگهی رو وارد کن:")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("لطفاً عنوان آگهی را وارد کنید:")
     return TITLE
 
-async def get_title(update: Update, context: CallbackContext):
+async def get_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['title'] = update.message.text
-    await update.message.reply_text("توضیحات آگهی رو وارد کن:")
+    await update.message.reply_text("توضیحات آگهی را وارد کنید:")
     return DESCRIPTION
 
-async def get_description(update: Update, context: CallbackContext):
+async def get_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['description'] = update.message.text
-    await update.message.reply_text("قیمت آگهی رو وارد کن:")
+    await update.message.reply_text("قیمت آگهی را وارد کنید:")
     return PRICE
 
-async def get_price(update: Update, context: CallbackContext):
+async def get_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['price'] = update.message.text
-    await update.message.reply_text("لطفاً یک عکس برای آگهی ارسال کن:")
+    await update.message.reply_text("یک عکس برای آگهی ارسال کنید:")
     return PHOTO
 
-async def get_photo(update: Update, context: CallbackContext):
-    photo = update.message.photo[-1]
-    context.user_data['photo'] = photo.file_id
+async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    photo_file = update.message.photo[-1].file_id
+    context.user_data['photo'] = photo_file
 
-    # درخواست شماره تماس با دکمه اختصاصی
-    contact_button = KeyboardButton("ارسال شماره تماس", request_contact=True)
-    reply_markup = ReplyKeyboardMarkup([[contact_button]], one_time_keyboard=True, resize_keyboard=True)
-
-    await update.message.reply_text("لطفاً شماره تماس خودت رو ارسال کن:", reply_markup=reply_markup)
+    # دکمه ارسال شماره تماس
+    button = KeyboardButton("📞 ارسال شماره تماس", request_contact=True)
+    reply_markup = ReplyKeyboardMarkup([[button]], resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text("لطفاً شماره تماس خود را ارسال کنید:", reply_markup=reply_markup)
     return PHONE
 
-async def get_phone(update: Update, context: CallbackContext):
+async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.contact
-    if contact:
-        phone_number = contact.phone_number
-    else:
-        phone_number = update.message.text
+    context.user_data['phone'] = contact.phone_number
 
-    context.user_data['phone'] = phone_number
+    # دکمه تایید نهایی
+    buttons = [[InlineKeyboardButton("✅ تایید", callback_data="confirm")]]
+    reply_markup = InlineKeyboardMarkup(buttons)
+    await update.message.reply_text("برای تایید نهایی روی دکمه زیر کلیک کنید:", reply_markup=reply_markup)
+    return CONFIRM
+
+async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_data = context.user_data
+    user = query.from_user
+    username = f"@{user.username}" if user.username else f"ID: {user.id}"
 
     ad = {
-        'user_id': update.effective_user.id,
-        'title': context.user_data['title'],
-        'description': context.user_data['description'],
-        'price': context.user_data['price'],
-        'photo': context.user_data['photo'],
-        'phone': phone_number,
+        'title': user_data['title'],
+        'description': user_data['description'],
+        'price': user_data['price'],
+        'photo': user_data['photo'],
+        'phone': user_data['phone'],
+        'username': username
     }
     ads.append(ad)
 
-    await update.message.reply_text("آگهی شما ثبت شد و برای بررسی به ادمین ارسال شد.", reply_markup=ReplyKeyboardRemove())
+    caption = f"📢 آگهی جدید\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}\n📞 شماره تماس: {ad['phone']}\n👤 ارسال‌کننده: {ad['username']}"
+    await context.bot.send_photo(chat_id=ADMIN_ID, photo=ad['photo'], caption=caption)
 
-    # ارسال آگهی برای ادمین‌ها
-    for admin_id in ADMINS:
-        await context.bot.send_photo(
-            chat_id=admin_id,
-            photo=ad['photo'],
-            caption=f"📢 <b>آگهی جدید:</b>\n\n📝 <b>عنوان:</b> {ad['title']}\n💬 <b>توضیحات:</b> {ad['description']}\n💰 <b>قیمت:</b> {ad['price']}\n📞 <b>شماره تماس:</b> {ad['phone']}",
-            parse_mode="HTML"
-        )
-
+    await query.edit_message_text("آگهی شما برای بررسی به ادمین ارسال شد. ✅")
     return ConversationHandler.END
 
-async def cancel(update: Update, context: CallbackContext):
-    await update.message.reply_text("فرآیند ثبت آگهی لغو شد.", reply_markup=ReplyKeyboardRemove())
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("فرآیند لغو شد.")
     return ConversationHandler.END
 
 def main():
-    application = Application.builder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('newad', new_ad)],
+        entry_points=[CommandHandler('start', start)],
         states={
             TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_title)],
             DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_description)],
             PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_price)],
             PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
-            PHONE: [MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), get_phone)],
+            PHONE: [MessageHandler(filters.CONTACT, get_phone)],
+            CONFIRM: [CallbackQueryHandler(confirm, pattern="^confirm$")]
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(conv_handler)
-
-    application.run_polling()
+    app.add_handler(conv_handler)
+    app.run_polling()
 
 if __name__ == '__main__':
     main()
