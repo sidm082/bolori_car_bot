@@ -6,10 +6,10 @@ import os
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # توکن ربات خود را اینجا وارد کنید
-TOKEN = "YOUR_BOT_TOKEN"
+TOKEN = "7581382819:AAFqL1O8igQdRLF5f_K4YvJ1VnrehVqo5IU"
 
 # آی‌دی عددی ادمین‌ها
-ADMINS = [123456789, 987654321]  # به‌جای این‌ها آی‌دی عددی ادمین‌های خودت رو بذار
+ADMINS =list(map(int, os.getenv("ADMIN_IDS", "5677216420").split(",")))  # به‌جای این‌ها آی‌دی عددی ادمین‌های خودت رو بذار
 
 # وضعیت‌ها برای ConversationHandler
 TITLE, DESCRIPTION, PRICE, PHOTO, PHONE = range(5)
