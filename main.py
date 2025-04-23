@@ -245,6 +245,8 @@ def init_db():
     try:
         conn = sqlite3.connect('ads.db')
         cursor = conn.cursor()
+
+        # اضافه کردن ستون date در صورتی که وجود نداشته باشد
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS ads (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -258,9 +260,16 @@ def init_db():
                 contact TEXT
             )
         ''')
+
+        # بررسی و اضافه کردن ستون date در صورت عدم وجود
+        cursor.execute('PRAGMA table_info(ads)')
+        columns = [column[1] for column in cursor.fetchall()]
+        if 'date' not in columns:
+            cursor.execute('ALTER TABLE ads ADD COLUMN date TEXT')
+
         conn.commit()
         conn.close()
-        print("✅ جدول ads ساخته شد.")
+        print("✅ جدول ads ساخته شد یا به‌روز شد.")
     except Exception as e:
         print("❌ خطا در ساخت جدول:", e)
         init_db()
