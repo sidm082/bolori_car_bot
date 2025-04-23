@@ -192,30 +192,6 @@ async def send_message_to_user(update: Update, context: ContextTypes.DEFAULT_TYP
         # مسیر مطلق برای فایل دیتابیس
 DATABASE_PATH = os.path.join(os.getcwd(), 'ads.db')
 
-def init_db():
-    try:
-        conn = sqlite3.connect('ads.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ads (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT,
-                description TEXT,
-                price TEXT,
-                photo TEXT,
-                phone TEXT,
-                username TEXT,
-                user_id INTEGER,
-                date TEXT,
-                approved INTEGER DEFAULT 0
-            )
-        ''')
-        conn.commit()
-        print("✅ جدول ads با موفقیت ایجاد شد!")
-    except Exception as e:
-        print(f"❌ خطا در ایجاد جدول: {e}")
-    finally:
-        conn.close()
 
 def save_ad(ad, approved=False):
     with closing(sqlite3.connect('ads.db')) as conn:
@@ -240,6 +216,29 @@ def save_ad(ad, approved=False):
             ad['username'], ad['user_id'], ad['date'].isoformat(), approved
         ))
         conn.commit()
+        def init_db():
+    try:
+        with sqlite3.connect('ads.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ads (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT,
+                    description TEXT,
+                    price TEXT,
+                    photo TEXT,
+                    phone TEXT,
+                    username TEXT,
+                    user_id INTEGER,
+                    date TEXT,
+                    approved INTEGER DEFAULT 0
+                )
+            ''')
+            conn.commit()
+            print("✅ جدول ads با موفقیت ایجاد شد!")
+    except Exception as e:
+        print(f"❌ خطا در ایجاد جدول: {e}")
+
 
 def load_ads():
     print("🔄 در حال بارگذاری آگهی‌های تایید شده از دیتابیس...")
@@ -327,7 +326,8 @@ def main():
     app.run_polling()
 
 if __name__ == '__main__':
-    init_db()  # اول دیتابیس و جدول‌ها ساخته می‌شن
-    approved_ads = load_ads()  # حالا می‌تونیم آگهی‌های تاییدشده رو بخونیم
-    main()  # اجرای اصلی ربات
+    init_db()  # اول جدول‌ها ساخته بشن
+    approved_ads = load_ads()  # بعدش بارگذاری بشن
+    main()  # در نهایت اجرای ربات
+
 
