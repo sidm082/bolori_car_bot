@@ -46,7 +46,8 @@ async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
                 except:
                     continue
         return START
-   elif text == "🔔 یادآوری آگهی‌های تایید نشده":
+
+elif text == "🔔 یادآوری آگهی‌های تایید نشده":
      with closing(sqlite3.connect('ads.db')) as conn:
          cursor = conn.cursor()
          cursor.execute("SELECT COUNT(*) FROM ads WHERE approved = 0")
