@@ -295,29 +295,20 @@ def load_ads():
     return approved_ads
 
 if __name__ == '__main__':
-    if not os.path.exists('ads.db'):
-        print("📦 دیتابیس وجود ندارد. در حال ساخت...")
-        init_db()
-    else:
-        print("📦 دیتابیس یافت شد.")
-
+    # ایجاد دیتابیس و بارگذاری آگهی‌های تأییدشده
+    init_db()
     approved_ads = load_ads()
-    print(f"✅ {len(approved_ads)} آگهی تایید شده بارگذاری شد.")
 
-    application = ApplicationBuilder().token(TOKEN).build()
+    async def main():
+        # حذف وب‌هوک برای جلوگیری از conflict
+        await application.bot.delete_webhook(drop_pending_updates=True)
 
-    application.add_handler(ConversationHandler(
-        entry_points=[CommandHandler("start", start), MessageHandler(filters.TEXT, handle_start_choice)],
-        states={
-            START: [MessageHandler(filters.TEXT, handle_start_choice)],
-            TITLE: [MessageHandler(filters.TEXT, get_title)],
-            DESCRIPTION: [MessageHandler(filters.TEXT, get_description)],
-            PRICE: [MessageHandler(filters.TEXT, get_price)],
-            PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
-            PHONE: [MessageHandler(filters.CONTACT, get_phone)],
-            CONFIRM: [CallbackQueryHandler(confirm, pattern="^confirm$")],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    ))
+        # اجرای ربات به صورت polling
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling()
+        print("🤖 ربات با polling اجرا شد")
+        await application.updater.idle()
 
-    application.run_polling()
+    import asyncio
+    asyncio.run(main())
