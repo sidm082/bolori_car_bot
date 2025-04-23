@@ -1,13 +1,25 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, ContextTypes, filters
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ConversationHandler,
+    ContextTypes,
+    filters
+)
 from datetime import datetime
 import sqlite3
 import os
 from contextlib import closing
 import logging
+import asyncio
 
 # تنظیم لاگ
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 # تنظیمات اولیه
@@ -370,14 +382,20 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # تابع اصلی
-if __name__ == '__main__':
+def main() -> None:
+    """راه اندازی و اجرای ربات"""
     init_db()
     approved_ads.extend(load_ads())
 
-    application = ApplicationBuilder().token(TOKEN).build()
+    # ساخت برنامه
+    application = Application.builder().token(TOKEN).build()
 
+    # تنظیم ConversationHandler
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start), MessageHandler(filters.TEXT & ~filters.COMMAND, handle_start_choice)],
+        entry_points=[
+            CommandHandler("start", start),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_start_choice)
+        ],
         states={
             START: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_start_choice)],
             TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_title)],
@@ -385,33 +403,31 @@ if __name__ == '__main__':
             PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_price)],
             PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
             PHONE: [MessageHandler(filters.CONTACT, get_phone)],
-            CONFIRM: [CallbackQueryHandler(confirm, pattern='^confirm$')],
+            CONFIRM: [CallbackQueryHandler(confirm, pattern="^confirm$")]
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
+        fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=True  # رفع هشدار PTBUserWarning
     )
 
+    # اضافه کردن هندلرها
     application.add_handler(conv_handler)
-    application.add_handler(CallbackQueryHandler(approve, pattern='^approve_'))
-    application.add_handler(CommandHandler('send', send_message_to_user))
-    application.add_handler(CommandHandler('lowest', filter_ads))
-    application.add_handler(CommandHandler('highest', filter_ads))
-    application.add_handler(CommandHandler('newest', filter_ads))
-    application.add_handler(CommandHandler('oldest', filter_ads))
+    application.add_handler(CallbackQueryHandler(approve, pattern=r"^approve_"))
+    application.add_handler(CommandHandler("send", send_message_to_user))
+    application.add_handler(CommandHandler(
+        ["lowest", "highest", "newest", "oldest"], 
+        filter_ads,
+        filters=filters.ChatType.PRIVATE
+    ))
 
-    async def main():
-        try:
-            await application.bot.delete_webhook(drop_pending_updates=True)
-            await application.initialize()
-            await application.start()
-            await application.updater.start_polling()
-            logger.info("🤖 ربات با polling اجرا شد")
-            await application.updater.idle()
-        except Exception as e:
-            logger.error(f"خطا در اجرای ربات: {e}")
+    # تنظیمات پورت برای Render
+    port = int(os.environ.get("PORT", 5000))
+    
+    # اجرای ربات
+    application.run_polling(
+        close_loop=False,
+        drop_pending_updates=True,
+        allowed_updates=Update.ALL_TYPES
+    )
 
-    import asyncio
-    try:
-        asyncio.run(main())
-    except RuntimeError:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(main())
+if __name__ == "__main__":
+    main()
