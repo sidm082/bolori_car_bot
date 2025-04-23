@@ -107,7 +107,7 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_buttons = [[InlineKeyboardButton("✅ تایید آگهی", callback_data=f"approve_{len(ads)-1}")]]
     admin_markup = InlineKeyboardMarkup(admin_buttons)
     username = ad['username'] if ad['username'] else f"ID: {ad['user_id']}"
-    caption = f"📢 آگهی جدید برای تایید\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}\n📞 شماره تماس: {ad['phone']}\n👤 نام کاربری: {username}"
+    caption = f"📢 آگهی جدید برای تایید\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}\n📞 شماره تماس: {ad['phone']}\n👤 نام کاربری: {ad[username]}"
 
     await context.bot.send_photo(chat_id=ADMIN_ID, photo=ad['photo'], caption=caption, reply_markup=admin_markup)
 
