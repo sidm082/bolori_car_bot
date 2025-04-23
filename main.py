@@ -13,7 +13,9 @@ import sqlite3
 import os
 from contextlib import closing
 import logging
-import asyncio
+from threading import Thread
+from fastapi import FastAPI
+import uvicorn
 
 # تنظیم لاگ
 logging.basicConfig(
@@ -26,7 +28,7 @@ logger = logging.getLogger(__name__)
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("BOT_TOKEN environment variable is not set")
-ADMIN_ID = 5677216420
+ADMIN_ID = 5677216420  # جایگزین با آی دی ادمین واقعی
 DATABASE_PATH = os.path.join(os.getcwd(), 'ads.db')
 
 # تعریف مراحل ConversationHandler
@@ -36,7 +38,7 @@ DATABASE_PATH = os.path.join(os.getcwd(), 'ads.db')
 users = set()
 approved_ads = []
 
-# تابع مقداردهی اولیه دیتابیس
+# --- توابع پایگاه داده ---
 def init_db():
     try:
         with closing(sqlite3.connect(DATABASE_PATH)) as conn:
@@ -56,11 +58,10 @@ def init_db():
                 )
             ''')
             conn.commit()
-        logger.info("✅ جدول ads ساخته شد یا به‌روز شد.")
+            logger.info("✅ جدول ads ساخته شد یا به‌روز شد.")
     except Exception as e:
         logger.error(f"❌ خطا در ساخت جدول: {e}")
 
-# تابع بارگذاری آگهی‌های تأییدشده
 def load_ads():
     logger.info("🔄 در حال بارگذاری آگهی‌های تایید شده از دیتابیس...")
     approved_ads = []
@@ -83,7 +84,6 @@ def load_ads():
         logger.error(f"خطا در بارگذاری آگهی‌ها: {e}")
     return approved_ads
 
-# تابع ذخیره آگهی در دیتابیس
 def save_ad(ad, approved=False):
     try:
         with closing(sqlite3.connect(DATABASE_PATH)) as conn:
@@ -102,7 +102,22 @@ def save_ad(ad, approved=False):
         logger.error(f"خطا در ذخیره آگهی: {e}")
         return None
 
-# تابع شروع
+# --- توابع وب سرور برای Render ---
+def run_web_server():
+    app = FastAPI()
+    
+    @app.get("/")
+    def home():
+        return {"status": "Bot is running"}
+    
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 5000)),
+        log_level="error"
+    )
+
+# --- توابع هندلر ربات ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users.add(update.effective_user.id)
     keyboard = [
@@ -115,7 +130,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text("یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=reply_markup)
     return START
-
 # تابع مدیریت انتخاب‌های اولیه
 async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -382,15 +396,17 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # تابع اصلی
+
+# --- تنظیمات اصلی ربات ---
 def main() -> None:
-    """راه اندازی و اجرای ربات"""
+    # اجرای وب سرور در پس‌زمینه
+    Thread(target=run_web_server, daemon=True).start()
+    
     init_db()
     approved_ads.extend(load_ads())
 
-    # ساخت برنامه
     application = Application.builder().token(TOKEN).build()
 
-    # تنظیم ConversationHandler
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -406,10 +422,9 @@ def main() -> None:
             CONFIRM: [CallbackQueryHandler(confirm, pattern="^confirm$")]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=True  # رفع هشدار PTBUserWarning
+        per_message=True
     )
 
-    # اضافه کردن هندلرها
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(approve, pattern=r"^approve_"))
     application.add_handler(CommandHandler("send", send_message_to_user))
@@ -419,12 +434,7 @@ def main() -> None:
         filters=filters.ChatType.PRIVATE
     ))
 
-    # تنظیمات پورت برای Render
-    port = int(os.environ.get("PORT", 5000))
-    
-    # اجرای ربات
     application.run_polling(
-        close_loop=False,
         drop_pending_updates=True,
         allowed_updates=Update.ALL_TYPES
     )
