@@ -124,13 +124,15 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     caption = f"📢 آگهی تایید شده\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}"
 
-    for user_id in users:
-        try:
-            await context.bot.send_photo(chat_id=user_id, photo=ad['photo'], caption=caption)
-        except:
-            continue
- 
- await query.edit_message_text("آگهی با موفقیت تایید و برای کاربران ارسال شد ✅")
+    private_message_button = InlineKeyboardButton("💬 ارسال پیام خصوصی به کاربر", callback_data=f"private_message_{ad['user_id']}")
+    admin_markup = InlineKeyboardMarkup([[private_message_button]])
+
+    await context.bot.send_photo(chat_id=ADMIN_ID, photo=ad['photo'], caption=caption, reply_markup=admin_markup)
+
+    await query.edit_message_text("آگهی با موفقیت تایید و برای کاربران ارسال شد ✅")
+
+
+
 async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
