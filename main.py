@@ -1,41 +1,28 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
-import json
-import os
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, ContextTypes, filters
+from datetime import datetime
 import sqlite3
+import os
+from contextlib import closing
+import logging
+from threading import Thread
+from fastapi import FastAPI
+import uvicorn
 
-# اتصال به دیتابیس SQLite (اگر دیتابیس موجود نباشد، ساخته می‌شود)
-conn = sqlite3.connect('ads_database.db')
-
-# ایجاد یک کرسر برای اجرا کردن دستورات SQL
-cursor = conn.cursor()
-
-# ایجاد جدول جدید (اگر وجود نداشته باشد)
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS ads (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    ad_info TEXT,
-    status TEXT
+# تنظیم لاگ
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
 )
-''')
-
-# ذخیره تغییرات و بستن اتصال
-conn.commit()
-conn.close()
-
-# فایل آگهی‌ها
-ADS_FILE = 'ads.json'
-APPROVED_ADS_FILE = 'approved_ads.json'
-
-# لیست آگهی‌های تایید شده
-approved_ads = []
+logger = logging.getLogger(__name__)
 
 # تنظیمات اولیه
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("BOT_TOKEN environment variable is not set")
 ADMIN_ID = 5677216420  # جایگزین با آی دی ادمین واقعی
+DATABASE_PATH = os.path.join(os.getcwd(), 'ads.db')
+
 # تعریف مراحل ConversationHandler
 (START, TITLE, DESCRIPTION, PRICE, PHOTO, CONFIRM, PHONE) = range(7)
 
@@ -43,102 +30,137 @@ ADMIN_ID = 5677216420  # جایگزین با آی دی ادمین واقعی
 users = set()
 approved_ads = []
 
-# بارگذاری آگهی‌ها از فایل
+# --- توابع پایگاه داده ---
+def init_db():
+    try:
+        with closing(sqlite3.connect(DATABASE_PATH)) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ads (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    username TEXT,
+                    title TEXT,
+                    description TEXT,
+                    price TEXT,
+                    photo TEXT,
+                    approved INTEGER DEFAULT 0,
+                    contact TEXT,
+                    date TEXT
+                )
+            ''')
+            conn.commit()
+            logger.info("✅ جدول ads ساخته شد یا به‌روز شد.")
+    except Exception as e:
+        logger.error(f"❌ خطا در ساخت جدول: {e}")
+
 def load_ads():
-    global approved_ads
-    if os.path.exists(APPROVED_ADS_FILE):
-        with open(APPROVED_ADS_FILE, 'r', encoding='utf-8') as f:
-            approved_ads = json.load(f)
+    logger.info("🔄 در حال بارگذاری آگهی‌های تایید شده از دیتابیس...")
+    approved_ads = []
+    try:
+        with closing(sqlite3.connect(DATABASE_PATH)) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM ads WHERE approved = 1')
+            for row in cursor.fetchall():
+                approved_ads.append({
+                    'title': row[3],
+                    'description': row[4],
+                    'price': row[5],
+                    'photo': row[6],
+                    'phone': row[8],
+                    'username': row[2],
+                    'user_id': row[1],
+                    'date': datetime.fromisoformat(row[9]) if row[9] else datetime.now()
+                })
+    except Exception as e:
+        logger.error(f"خطا در بارگذاری آگهی‌ها: {e}")
+    return approved_ads
 
-# ذخیره آگهی‌ها در فایل
-def save_ads():
-    with open(APPROVED_ADS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(approved_ads, f, ensure_ascii=False, indent=4)
+def save_ad(ad, approved=False):
+    try:
+        with closing(sqlite3.connect(DATABASE_PATH)) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO ads (title, description, price, photo, contact, username, user_id, date, approved)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                ad['title'], ad['description'], ad['price'], ad['photo'], ad['phone'],
+                ad['username'], ad['user_id'], ad['date'].isoformat(), approved
+            ))
+            conn.commit()
+            cursor.execute('SELECT last_insert_rowid()')
+            return cursor.fetchone()[0]
+    except Exception as e:
+        logger.error(f"خطا در ذخیره آگهی: {e}")
+        return None
 
-# ذخیره آگهی جدید
-def save_ad(ad):
-    ads = load_ads_from_file()
-    ads.append(ad)
-    with open(ADS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(ads, f, ensure_ascii=False, indent=4)
-
-# بارگذاری آگهی‌ها از فایل
-def load_ads_from_file():
-    if os.path.exists(ADS_FILE):
-        with open(ADS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return []
-
-# ارسال پیام به کاربران
-def send_message_to_users(update, context, message):
-    with open('users.json', 'r', encoding='utf-8') as f:
-        users = json.load(f)
+# --- توابع وب سرور برای Render ---
+def run_web_server():
+    app = FastAPI()
     
-    for user_id in users:
-        try:
-            context.bot.send_message(chat_id=user_id, text=message)
-        except Exception as e:
-            print(f"Error sending message to {user_id}: {e}")
-
-# دستور /start
-def start(update, context):
-    update.message.reply_text("سلام! به ربات آگهی‌ها خوش آمدید.")
-
-# دستور ارسال آگهی
-def submit_ad(update, context):
-    ad_info = ' '.join(context.args)
-    if ad_info:
-        # آگهی جدید ثبت می‌شود
-        ad = {
-            "user_id": update.message.from_user.id,
-            "ad_info": ad_info,
-            "status": "pending"
-        }
-        save_ad(ad)
-        update.message.reply_text("آگهی شما با موفقیت ثبت شد و منتظر تایید است.")
-    else:
-        update.message.reply_text("لطفاً اطلاعات آگهی خود را وارد کنید.")
-
-# تایید آگهی توسط ادمین
-def approve_ad(update, context):
-    if update.message.from_user.id == ADMIN_USER_ID:
-        ad_id = int(context.args[0]) if context.args else None
-        if ad_id is not None:
-            ads = load_ads_from_file()
-            if 0 <= ad_id < len(ads) and ads[ad_id]["status"] == "pending":
-                ads[ad_id]["status"] = "approved"
-                approved_ads.append(ads[ad_id])
-                save_ads()
-                save_ads_to_file(ads)
-                update.message.reply_text(f"آگهی با شماره {ad_id} تایید شد.")
-            else:
-                update.message.reply_text("آگهی موجود نیست یا قبلاً تایید شده است.")
-        else:
-            update.message.reply_text("لطفاً شماره آگهی را وارد کنید.")
-    else:
-        update.message.reply_text("شما مجوز تایید آگهی ندارید.")
-
-# دستور نمایش آگهی‌های تایید شده
-def show_approved_ads(update, context):
-    if len(approved_ads) == 0:
-        update.message.reply_text("هیچ آگهی تایید شده‌ای وجود ندارد.")
-    else:
-        for ad in approved_ads:
-            update.message.reply_text(f"آگهی: {ad['ad_info']}")
-
-# تعریف توابع و راه‌اندازی ربات
-def main():
-    load_ads()  # بارگذاری آگهی‌ها
-    updater = Updater('YOUR_TOKEN', use_context=True)
+    @app.get("/")
+    def home():
+        return {"status": "Bot is running"}
     
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("submit_ad", submit_ad))
-    dp.add_handler(CommandHandler("approve_ad", approve_ad))
-    dp.add_handler(CommandHandler("show_approved_ads", show_approved_ads))
-    
-    updater.start_polling()
-    updater.idle()
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 5000)),
+        log_level="error"
+    )
 
-if __name__ == '__main__':
+# --- توابع هندلر ربات ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    users.add(update.effective_user.id)
+    keyboard = [
+        [KeyboardButton("📝 ثبت آگهی")],
+        [KeyboardButton("📋 تمامی آگهی‌ها")],
+        [KeyboardButton("🔍 کمترین قیمت"), KeyboardButton("🔍 بیشترین قیمت")],
+        [KeyboardButton("🆕 جدیدترین"), KeyboardButton("🕰 قدیمی‌ترین")],
+        [KeyboardButton("🔔 یادآوری آگهی‌های تایید نشده")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    await update.message.reply_text("یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=reply_markup)
+    return START
+
+# تابع اصلی
+def main() -> None:
+    # اجرای وب سرور در پس‌زمینه
+    Thread(target=run_web_server, daemon=True).start()
+    
+    init_db()
+    approved_ads.extend(load_ads())
+
+    application = Application.builder().token(TOKEN).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            START: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_start_choice)],
+            TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_title)],
+            DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_description)],
+            PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_price)],
+            PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
+            PHONE: [MessageHandler(filters.CONTACT, get_phone)],
+            CONFIRM: [CallbackQueryHandler(confirm, pattern="^confirm$")]
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=True
+    )
+
+    application.add_handler(conv_handler)
+    application.add_handler(CallbackQueryHandler(approve, pattern=r"^approve_"))
+    application.add_handler(CommandHandler("send", send_message_to_user))
+    application.add_handler(CommandHandler(
+        ["lowest", "highest", "newest", "oldest"], 
+        filter_ads,
+        filters=filters.ChatType.PRIVATE
+    ))
+
+    application.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=Update.ALL_TYPES
+    )
+
+if __name__ == "__main__":
     main()
