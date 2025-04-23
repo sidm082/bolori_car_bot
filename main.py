@@ -1,8 +1,9 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, ContextTypes, filters
-from datetime import datetime
+from datetime import datetime 
+import os
 
-TOKEN = '8178162651:AAGujfvy4MsQwcn-sI66v4Y2nyDQkVDPEvI'
+TOKEN = os.getenv("BOT_TOKEN")  # توکن از محیط گرفته میشه
 ADMIN_ID = 5677216420  # آیدی عددی ادمین را اینجا قرار بده
 
 # مراحل ثبت آگهی
@@ -191,6 +192,8 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT, filter_ads))
 
     app.run_polling()
+    application.run_polling()
+
 
 if __name__ == '__main__':
     main()
