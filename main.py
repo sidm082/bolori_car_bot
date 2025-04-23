@@ -193,30 +193,38 @@ async def send_message_to_user(update: Update, context: ContextTypes.DEFAULT_TYP
 DATABASE_PATH = os.path.join(os.getcwd(), 'ads.db')
 
 def init_db():
-    conn = sqlite3.connect(DATABASE_PATH)  # <-- استفاده از مسیر مطلق
-    try:
-        conn = sqlite3.connect('ads.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ads (
-                id INTEGER PRIMARY KEY,
-                title TEXT,
-                description TEXT,
-                price TEXT,
-                photo TEXT,
-                phone TEXT,
-                username TEXT,
-                user_id INTEGER,
-                date TEXT,
-                approved BOOLEAN DEFAULT 0
-            )
-        ''')
-        conn.commit()
+    conn = sqlite3.connect('ads.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS ads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            username TEXT,
+            title TEXT,
+            description TEXT,
+            price TEXT,
+            photo_id TEXT,
+            approved INTEGER DEFAULT 0
+        )
+    ''')
+    conn.commit()
         print("✅ جدول ads با موفقیت ایجاد شد!")
     except Exception as e:
         print(f"❌ خطا در ایجاد جدول: {e}")
     finally:
         conn.close()
+def save_ad(ad, approved=False):
+    with closing(sqlite3.connect('ads.db')) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO ads (title, description, price, photo, phone, username, user_id, date, approved)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            ad['title'], ad['description'], ad['price'], ad['photo'], ad['phone'],
+            ad['username'], ad['user_id'], ad['date'].isoformat(), approved
+        ))
+    conn.close()
+
 def save_ad(ad, approved=False):
     with closing(sqlite3.connect('ads.db')) as conn:
         cursor = conn.cursor()
