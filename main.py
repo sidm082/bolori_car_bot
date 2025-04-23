@@ -189,8 +189,13 @@ async def send_message_to_user(update: Update, context: ContextTypes.DEFAULT_TYP
         for user_id in inactive_users:
             users.discard(user_id)
         await update.message.reply_text("پیام به همه کاربران ارسال شد.")
+        # مسیر مطلق برای فایل دیتابیس
+DATABASE_PATH = os.path.join(os.getcwd(), 'ads.db')
+
 def init_db():
-    with closing(sqlite3.connect('ads.db')) as conn:
+    conn = sqlite3.connect(DATABASE_PATH)  # <-- استفاده از مسیر مطلق
+    try:
+        conn = sqlite3.connect('ads.db')
         cursor = conn.cursor()
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS ads (
@@ -207,7 +212,11 @@ def init_db():
             )
         ''')
         conn.commit()
-
+        print("✅ جدول ads با موفقیت ایجاد شد!")
+    except Exception as e:
+        print(f"❌ خطا در ایجاد جدول: {e}")
+    finally:
+        conn.close()
 def save_ad(ad, approved=False):
     with closing(sqlite3.connect('ads.db')) as conn:
         cursor = conn.cursor()
