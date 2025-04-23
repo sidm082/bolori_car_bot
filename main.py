@@ -294,5 +294,21 @@ if __name__ == '__main__':
 
     approved_ads = load_ads()
     print(f"✅ {len(approved_ads)} آگهی تایید شده بارگذاری شد.")
-    
-    main()
+
+    application = ApplicationBuilder().token(TOKEN).build()
+
+    application.add_handler(ConversationHandler(
+        entry_points=[CommandHandler("start", start), MessageHandler(filters.TEXT, handle_start_choice)],
+        states={
+            START: [MessageHandler(filters.TEXT, handle_start_choice)],
+            TITLE: [MessageHandler(filters.TEXT, get_title)],
+            DESCRIPTION: [MessageHandler(filters.TEXT, get_description)],
+            PRICE: [MessageHandler(filters.TEXT, get_price)],
+            PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
+            PHONE: [MessageHandler(filters.CONTACT, get_phone)],
+            CONFIRM: [CallbackQueryHandler(confirm, pattern="^confirm$")],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    ))
+
+    application.run_polling()
