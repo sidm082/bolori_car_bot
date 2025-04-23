@@ -216,30 +216,29 @@ def save_ad(ad, approved=False):
             ad['username'], ad['user_id'], ad['date'].isoformat(), approved
         ))
         conn.commit()
-        def init_db():
+def init_db():
     try:
-        with sqlite3.connect('ads.db') as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS ads (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    title TEXT,
-                    description TEXT,
-                    price TEXT,
-                    photo TEXT,
-                    phone TEXT,
-                    username TEXT,
-                    user_id INTEGER,
-                    date TEXT,
-                    approved INTEGER DEFAULT 0
-                )
-            ''')
-            conn.commit()
-            print("✅ جدول ads با موفقیت ایجاد شد!")
+        conn = sqlite3.connect('ads.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                username TEXT,
+                title TEXT,
+                description TEXT,
+                price TEXT,
+                photo TEXT,
+                approved INTEGER DEFAULT 0,
+                contact TEXT
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        print("✅ جدول ads ساخته شد.")
     except Exception as e:
-        print(f"❌ خطا در ایجاد جدول: {e}")
-
-
+        print("❌ خطا در ساخت جدول:", e)
+        
 def load_ads():
     print("🔄 در حال بارگذاری آگهی‌های تایید شده از دیتابیس...")
     conn = sqlite3.connect('ads.db')
@@ -327,7 +326,12 @@ def main():
 
 if __name__ == '__main__':
     init_db()  # اول جدول‌ها ساخته بشن
-    approved_ads = load_ads()  # بعدش بارگذاری بشن
+    approved_ads = load_ads() 
+    # اگر دیتابیس وجود نداشت، بساز
+if not os.path.exists('ads.db'):
+    print("📦 دیتابیس وجود ندارد. در حال ساخت...")
+    init_db()
+# بعدش بارگذاری بشن
     main()  # در نهایت اجرای ربات
 
 
