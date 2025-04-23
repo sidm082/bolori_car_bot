@@ -193,26 +193,30 @@ async def send_message_to_user(update: Update, context: ContextTypes.DEFAULT_TYP
 DATABASE_PATH = os.path.join(os.getcwd(), 'ads.db')
 
 def init_db():
-    conn = sqlite3.connect('ads.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS ads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            username TEXT,
-            title TEXT,
-            description TEXT,
-            price TEXT,
-            photo_id TEXT,
-            approved INTEGER DEFAULT 0
-        )
-    ''')
-    conn.commit()
+    try:
+        conn = sqlite3.connect('ads.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,
+                description TEXT,
+                price TEXT,
+                photo TEXT,
+                phone TEXT,
+                username TEXT,
+                user_id INTEGER,
+                date TEXT,
+                approved INTEGER DEFAULT 0
+            )
+        ''')
+        conn.commit()
         print("✅ جدول ads با موفقیت ایجاد شد!")
     except Exception as e:
         print(f"❌ خطا در ایجاد جدول: {e}")
     finally:
         conn.close()
+
 def save_ad(ad, approved=False):
     with closing(sqlite3.connect('ads.db')) as conn:
         cursor = conn.cursor()
@@ -238,6 +242,7 @@ def save_ad(ad, approved=False):
         conn.commit()
 
 def load_ads():
+    print("🔄 در حال بارگذاری آگهی‌های تایید شده از دیتابیس...")
     conn = sqlite3.connect('ads.db')
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM ads WHERE approved = 1')
@@ -258,6 +263,7 @@ def load_ads():
 
 # بارگذاری آگهی‌های تایید شده هنگام راه‌اندازی
 approved_ads = load_ads()
+print(f"✅ {len(approved_ads)} آگهی تایید شده بارگذاری شد.")
 
 async def filter_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     command = update.message.text
