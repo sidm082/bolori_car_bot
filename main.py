@@ -3,7 +3,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 from datetime import datetime 
 import os
 
-BOT_TOKEN= os.getenv("BOT_TOKEN")  # توکن از محیط گرفته میشه
+TOKEN= os.getenv("BOT_TOKEN")  # توکن از محیط گرفته میشه
 ADMIN_ID = 5677216420  # آیدی عددی ادمین را اینجا قرار بده
 
 # مراحل ثبت آگهی
