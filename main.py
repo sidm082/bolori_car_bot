@@ -16,6 +16,7 @@ import logging
 from threading import Thread
 from fastapi import FastAPI
 import uvicorn
+
 # تنظیم لاگ
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -129,6 +130,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text("یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=reply_markup)
     return START
+
 # تابع مدیریت انتخاب‌های اولیه
 async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -169,7 +171,7 @@ async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
             "🕰 قدیمی‌ترین": "/oldest"
         }[text]
         update.message.text = command
-        await filter_ads(update, context)
+        await send_filtered_ads(update, context)
         return START
     else:
         await update.message.reply_text("گزینه نامعتبر است. لطفاً از دکمه‌ها استفاده کنید.")
@@ -267,10 +269,14 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_markup = InlineKeyboardMarkup(admin_buttons)
 
     caption = (
-        f"📢 آگهی جدید برای تایید\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n"
-        f"💰 قیمت: {ad['price']}\n📞 شماره تماس: {ad['phone']}\n👤 نام کاربری: {ad['username']}"
+        f"📢 آگهی جدید برای تأیید\n"
+        f"📝 عنوان: {ad['title']}\n"
+        f"📄 توضیحات: {ad['description']}\n"
+        f"💰 قیمت: {ad['price']}\n"
+        f"👤 ارسال‌کننده: {ad['username']}\n"
+        f"📞 شماره تماس: {ad['phone']}"
     )
-
+    
     try:
         await context.bot.send_photo(
             chat_id=ADMIN_ID,
@@ -278,165 +284,62 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption=caption,
             reply_markup=admin_markup
         )
-        await query.edit_message_text("آگهی شما برای بررسی به ادمین ارسال شد. ✅")
+        await query.edit_message_text("آگهی شما با موفقیت ثبت شد و برای تأیید به ادمین ارسال شد.")
     except Exception as e:
         logger.error(f"خطا در ارسال آگهی به ادمین: {e}")
         await query.edit_message_text("خطایی در ارسال آگهی به ادمین رخ داد. لطفاً دوباره تلاش کنید.")
-    
     return ConversationHandler.END
 
-# تابع تأیید آگهی توسط ادمین
-async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    try:
-        ad_id = int(query.data.split('_')[1])
-        with closing(sqlite3.connect(DATABASE_PATH)) as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM ads WHERE id = ?', (ad_id,))
-            row = cursor.fetchone()
-            
-            if row:
-                cursor.execute('UPDATE ads SET approved = 1 WHERE id = ?', (ad_id,))
-                conn.commit()
-                
-                ad = {
-                    'title': row[3],
-                    'description': row[4],
-                    'price': row[5],
-                    'photo': row[6],
-                    'phone': row[8],
-                    'username': row[2],
-                    'date': datetime.fromisoformat(row[9]) if row[9] else datetime.now()
-                }
-                
-                approved_ads.append(ad)
-                
-                for user_id in users:
-                    try:
-                        await context.bot.send_photo(
-                            chat_id=user_id,
-                            photo=ad['photo'],
-                            caption=f"📢 آگهی تایید شده\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}"
-                        )
-                    except Exception as e:
-                        logger.error(f"خطا در ارسال آگهی به کاربر {user_id}: {e}")
-                
-                await query.edit_message_text("آگهی با موفقیت تایید و برای کاربران ارسال شد ✅")
-            else:
-                await query.edit_message_text("آگهی مورد نظر یافت نشد!")
-    except Exception as e:
-        logger.error(f"خطا در تأیید آگهی: {e}")
-        await query.edit_message_text("خطایی رخ داد. لطفاً دوباره تلاش کنید.")
-
-# تابع ارسال پیام به کاربران توسط ادمین
-async def send_message_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("فقط ادمین می‌تواند پیام گروهی ارسال کند.")
-        return
-    
-    if not context.args:
-        await update.message.reply_text("لطفاً متن پیام را وارد کنید. مثال: /send سلام به همه")
-        return
-    
-    message = " ".join(context.args)
-    inactive_users = []
-    for user_id in users:
-        try:
-            await context.bot.send_message(chat_id=user_id, text=message)
-        except Exception as e:
-            logger.error(f"خطا در ارسال پیام به کاربر {user_id}: {e}")
-            inactive_users.append(user_id)
-    
-    for user_id in inactive_users:
-        users.discard(user_id)
-    
-    await update.message.reply_text(f"پیام به {len(users)} کاربر ارسال شد. {len(inactive_users)} کاربر غیرفعال حذف شدند.")
-
-# تابع فیلتر کردن آگهی‌ها
-async def filter_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# تابع نمایش آگهی‌ها
+async def send_filtered_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     command = update.message.text
-    try:
-        with closing(sqlite3.connect(DATABASE_PATH)) as conn:
-            cursor = conn.cursor()
-            
-            if command == '/lowest':
-                cursor.execute('SELECT * FROM ads WHERE approved = 1 ORDER BY CAST(price AS REAL) ASC')
-            elif command == '/highest':
-                cursor.execute('SELECT * FROM ads WHERE approved = 1 ORDER BY CAST(price AS REAL) DESC')
-            elif command == '/newest':
-                cursor.execute('SELECT * FROM ads WHERE approved = 1 ORDER BY date DESC')
-            elif command == '/oldest':
-                cursor.execute('SELECT * FROM ads WHERE approved = 1 ORDER BY date ASC')
-            else:
-                await update.message.reply_text("دستور نامعتبر است.")
-                return
-            
-            ads = cursor.fetchall()
-            
-            if not ads:
-                await update.message.reply_text("هیچ آگهی یافت نشد.")
-                return
-            
-            for ad in ads:
-                caption = f"📢 آگهی تایید شده\n📝 عنوان: {ad[3]}\n📄 توضیحات: {ad[4]}\n💰 قیمت: {ad[5]}"
-                try:
-                    await update.message.reply_photo(photo=ad[6], caption=caption)
-                except Exception as e:
-                    logger.error(f"خطا در ارسال آگهی {ad[0]}: {e}")
-    except Exception as e:
-        logger.error(f"خطا در فیلتر کردن آگهی‌ها: {e}")
-        await update.message.reply_text("خطایی رخ داد. لطفاً دوباره تلاش کنید.")
-
-# تابع لغو فرآیند
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("فرآیند لغو شد.")
-    return ConversationHandler.END
-
-# تابع اصلی
-
-# --- تنظیمات اصلی ربات ---
-def main() -> None:
-    # اجرای وب سرور در پس‌زمینه
-    Thread(target=run_web_server, daemon=True).start()
+    if command == "/lowest":
+        ads = sorted(approved_ads, key=lambda ad: float(ad['price']))
+    elif command == "/highest":
+        ads = sorted(approved_ads, key=lambda ad: float(ad['price']), reverse=True)
+    elif command == "/newest":
+        ads = sorted(approved_ads, key=lambda ad: ad['date'], reverse=True)
+    elif command == "/oldest":
+        ads = sorted(approved_ads, key=lambda ad: ad['date'])
     
+    if not ads:
+        await update.message.reply_text("هیچ آگهی تایید شده‌ای موجود نیست.")
+    else:
+        for ad in ads:
+            caption = f"📢 آگهی\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}\n👤 ارسال‌کننده: {ad['username']}"
+            try:
+                await update.message.reply_photo(photo=ad['photo'], caption=caption)
+            except Exception as e:
+                logger.error(f"خطا در ارسال آگهی: {e}")
+                continue
+
+# --- دستور ربات ---
+def main():
     init_db()
-    approved_ads.extend(load_ads())
+    global approved_ads
+    approved_ads = load_ads()
 
     application = Application.builder().token(TOKEN).build()
 
+    # اجرای وب سرور در یک رشته جداگانه
+    Thread(target=run_web_server).start()
+
     conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("start", start),
-            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_start_choice)
-        ],
+        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, handle_start_choice)],
         states={
-            START: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_start_choice)],
-            TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_title)],
-            DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_description)],
-            PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_price)],
+            START: [MessageHandler(filters.TEXT, handle_start_choice)],
+            TITLE: [MessageHandler(filters.TEXT, get_title)],
+            DESCRIPTION: [MessageHandler(filters.TEXT, get_description)],
+            PRICE: [MessageHandler(filters.TEXT, get_price)],
             PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
             PHONE: [MessageHandler(filters.CONTACT, get_phone)],
             CONFIRM: [CallbackQueryHandler(confirm, pattern="^confirm$")]
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=True
+        fallbacks=[],
     )
-
     application.add_handler(conv_handler)
-    application.add_handler(CallbackQueryHandler(approve, pattern=r"^approve_"))
-    application.add_handler(CommandHandler("send", send_message_to_user))
-    application.add_handler(CommandHandler(
-        ["lowest", "highest", "newest", "oldest"], 
-        filter_ads,
-        filters=filters.ChatType.PRIVATE
-    ))
-
-    application.run_polling(
-        drop_pending_updates=True,
-        allowed_updates=Update.ALL_TYPES
-    )
+    
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
