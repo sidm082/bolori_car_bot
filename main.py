@@ -2,6 +2,27 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
 import json
 import os
+import sqlite3
+
+# اتصال به دیتابیس SQLite (اگر دیتابیس موجود نباشد، ساخته می‌شود)
+conn = sqlite3.connect('ads_database.db')
+
+# ایجاد یک کرسر برای اجرا کردن دستورات SQL
+cursor = conn.cursor()
+
+# ایجاد جدول جدید (اگر وجود نداشته باشد)
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS ads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    ad_info TEXT,
+    status TEXT
+)
+''')
+
+# ذخیره تغییرات و بستن اتصال
+conn.commit()
+conn.close()
 
 # فایل آگهی‌ها
 ADS_FILE = 'ads.json'
