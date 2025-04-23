@@ -106,8 +106,9 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # دکمه تایید توسط ادمین
     admin_buttons = [[InlineKeyboardButton("✅ تایید آگهی", callback_data=f"approve_{len(ads)-1}")]]
     admin_markup = InlineKeyboardMarkup(admin_buttons)
+    username = ad['username'] if ad['username'] else f"ID: {ad['user_id']}"
+    caption = f"📢 آگهی جدید برای تایید\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}\n📞 شماره تماس: {ad['phone']}\n👤 نام کاربری: {username}"
 
-    caption = f"📢 آگهی جدید برای تایید\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}\n📞 شماره تماس: {ad['phone']}"
     await context.bot.send_photo(chat_id=ADMIN_ID, photo=ad['photo'], caption=caption, reply_markup=admin_markup)
 
     await query.edit_message_text("آگهی شما برای بررسی به ادمین ارسال شد. ✅")
@@ -128,9 +129,7 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_photo(chat_id=user_id, photo=ad['photo'], caption=caption)
         except:
             continue
- private_message_button = InlineKeyboardButton("💬 ارسال پیام خصوصی به کاربر", callback_data=f"private_message_{ad['user_id']}")
- admin_buttons = [[InlineKeyboardButton("✅ تایید آگهی", callback_data=f"approve_{len(ads)-1}"), private_message_button]]
- admin_markup = InlineKeyboardMarkup(admin_buttons)
+ 
  await query.edit_message_text("آگهی با موفقیت تایید و برای کاربران ارسال شد ✅")
 async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
