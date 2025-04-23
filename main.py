@@ -128,8 +128,34 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_photo(chat_id=user_id, photo=ad['photo'], caption=caption)
         except:
             continue
-
+ private_message_button = InlineKeyboardButton("💬 ارسال پیام خصوصی به کاربر", callback_data=f"private_message_{ad['user_id']}")
+    admin_buttons = [[InlineKeyboardButton("✅ تایید آگهی", callback_data=f"approve_{len(ads)-1}"), private_message_button]]
+    admin_markup = InlineKeyboardMarkup(admin_buttons)
     await query.edit_message_text("آگهی با موفقیت تایید و برای کاربران ارسال شد ✅")
+async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = int(query.data.split('_')[2])  # گرفتن ID کاربر از دکمه
+    user = await context.bot.get_chat(user_id)  # گرفتن اطلاعات کاربر از ID
+
+    # ارسال پیام خصوصی به ادمین
+    await context.bot.send_message(chat_id=ADMIN_ID, text=f"می‌خواهید پیام خصوصی برای کاربر {user.username} ارسال کنید:")
+
+    # درخواست پیام از ادمین
+    await query.edit_message_text("برای ارسال پیام خصوصی، لطفاً پیامی بنویسید:")
+
+    return "SEND_PRIVATE_MESSAGE"
+async def send_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    user_message = update.message.text  # پیام ادمین
+    target_user_id = int(update.message.reply_to_message.text.split(' ')[-1])  # گرفتن ID کاربر
+
+    await context.bot.send_message(chat_id=target_user_id, text=user_message)  # ارسال پیام به کاربر
+    await update.message.reply_text("پیام شما به کاربر ارسال شد.")
+
 
 async def send_message_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id == ADMIN_ID:
