@@ -1,8 +1,8 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, ContextTypes, filters
 from datetime import datetime
-import os
 import sqlite3
+import os
 from contextlib import closing
 import logging
 
@@ -191,78 +191,6 @@ async def send_message_to_user(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("پیام به همه کاربران ارسال شد.")
         # مسیر مطلق برای فایل دیتابیس
 DATABASE_PATH = os.path.join(os.getcwd(), 'ads.db')
-
-
-def save_ad(ad, approved=False):
-    with closing(sqlite3.connect('ads.db')) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO ads (title, description, price, photo, phone, username, user_id, date, approved)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            ad['title'], ad['description'], ad['price'], ad['photo'], ad['phone'],
-            ad['username'], ad['user_id'], ad['date'].isoformat(), approved
-        ))
-    conn.close()
-
-def save_ad(ad, approved=False):
-    with closing(sqlite3.connect('ads.db')) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO ads (title, description, price, photo, phone, username, user_id, date, approved)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            ad['title'], ad['description'], ad['price'], ad['photo'], ad['phone'],
-            ad['username'], ad['user_id'], ad['date'].isoformat(), approved
-        ))
-        conn.commit()
-def init_db():
-    try:
-        conn = sqlite3.connect('ads.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ads (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                username TEXT,
-                title TEXT,
-                description TEXT,
-                price TEXT,
-                photo TEXT,
-                approved INTEGER DEFAULT 0,
-                contact TEXT
-            )
-        ''')
-        conn.commit()
-        conn.close()
-        print("✅ جدول ads ساخته شد.")
-    except Exception as e:
-        print("❌ خطا در ساخت جدول:", e)
-        
-def load_ads():
-    print("🔄 در حال بارگذاری آگهی‌های تایید شده از دیتابیس...")
-    conn = sqlite3.connect('ads.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM ads WHERE approved = 1')
-    approved_ads = []
-    for row in cursor.fetchall():
-        approved_ads.append({
-            'title': row[1],
-            'description': row[2],
-            'price': row[3],
-            'photo': row[4],
-            'phone': row[5],
-            'username': row[6],
-            'user_id': row[7],
-            'date': datetime.fromisoformat(row[8])
-        })
-    conn.close()
-    return approved_ads
-
-# بارگذاری آگهی‌های تایید شده هنگام راه‌اندازی
-approved_ads = load_ads()
-print(f"✅ {len(approved_ads)} آگهی تایید شده بارگذاری شد.")
-
 async def filter_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     command = update.message.text
     conn = sqlite3.connect('ads.db')
@@ -299,6 +227,64 @@ async def filter_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("فرآیند لغو شد.")
     return ConversationHandler.END
+
+def save_ad(ad, approved=False):
+    with closing(sqlite3.connect('ads.db')) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO ads (title, description, price, photo, phone, username, user_id, date, approved)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            ad['title'], ad['description'], ad['price'], ad['photo'], ad['phone'],
+            ad['username'], ad['user_id'], ad['date'].isoformat(), approved
+        ))
+        conn.commit()
+def init_db():
+    try:
+        conn = sqlite3.connect('ads.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                username TEXT,
+                title TEXT,
+                description TEXT,
+                price TEXT,
+                photo TEXT,
+                approved INTEGER DEFAULT 0,
+                contact TEXT
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        print("✅ جدول ads ساخته شد.")
+    except Exception as e:
+        print("❌ خطا در ساخت جدول:", e)
+        init_db()
+def load_ads():
+    print("🔄 در حال بارگذاری آگهی‌های تایید شده از دیتابیس...")
+    conn = sqlite3.connect('ads.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM ads WHERE approved = 1')
+    approved_ads = []
+    for row in cursor.fetchall():
+        approved_ads.append({
+            'title': row[1],
+            'description': row[2],
+            'price': row[3],
+            'photo': row[4],
+            'phone': row[5],
+            'username': row[6],
+            'user_id': row[7],
+            'date': datetime.fromisoformat(row[8])
+        })
+    conn.close()
+    return approved_ads
+
+# بارگذاری آگهی‌های تایید شده هنگام راه‌اندازی
+approved_ads = load_ads()
+print(f"✅ {len(approved_ads)} آگهی تایید شده بارگذاری شد.")
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
