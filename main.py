@@ -129,9 +129,9 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             continue
  private_message_button = InlineKeyboardButton("💬 ارسال پیام خصوصی به کاربر", callback_data=f"private_message_{ad['user_id']}")
-    admin_buttons = [[InlineKeyboardButton("✅ تایید آگهی", callback_data=f"approve_{len(ads)-1}"), private_message_button]]
-    admin_markup = InlineKeyboardMarkup(admin_buttons)
-    await query.edit_message_text("آگهی با موفقیت تایید و برای کاربران ارسال شد ✅")
+ admin_buttons = [[InlineKeyboardButton("✅ تایید آگهی", callback_data=f"approve_{len(ads)-1}"), private_message_button]]
+ admin_markup = InlineKeyboardMarkup(admin_buttons)
+ await query.edit_message_text("آگهی با موفقیت تایید و برای کاربران ارسال شد ✅")
 async def private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
