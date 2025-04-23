@@ -30,6 +30,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text("یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=reply_markup)
     return START
+
 async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if text == "📝 ثبت آگهی":
@@ -46,7 +47,7 @@ async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
                 except:
                     continue
         return START
-    elif text == "🔔 یادآوری آگهی‌های تایید نشده":  # این خط باید ترازبندی درستی داشته باشد
+    elif text == "🔔 یادآوری آگهی‌های تایید نشده":
         if not ads:
             await update.message.reply_text("هیچ آگهی تایید نشده‌ای وجود ندارد.")
         else:
@@ -55,6 +56,7 @@ async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         await update.message.reply_text("گزینه نامعتبر است. لطفاً از دکمه‌ها استفاده کنید.")
         return START
+
 async def get_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['title'] = update.message.text
     await update.message.reply_text("توضیحات آگهی را وارد کنید:")
@@ -91,6 +93,7 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("آگهی شما آماده است. برای تأیید نهایی کلیک کنید:", reply_markup=reply_markup)
     return CONFIRM
+
 async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -110,10 +113,8 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'date': datetime.now()
     }
 
-    # ذخیره در دیتابیس
     save_ad(ad)
 
-    # اینجا اتصال جداگانه می‌زنیم تا ID آگهی آخر رو بگیریم
     with closing(sqlite3.connect('ads.db')) as conn:
         cursor = conn.cursor()
         cursor.execute('SELECT last_insert_rowid()')
@@ -133,7 +134,6 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text("آگهی شما برای بررسی به ادمین ارسال شد. ✅")
     return ConversationHandler.END
-
 
 async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -159,10 +159,8 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'date': datetime.fromisoformat(row[8])
             }
             
-            # اضافه کردن آگهی به لیست approved_ads
             approved_ads.append(ad)
             
-            # ارسال به کاربران
             for user_id in users:
                 try:
                     await context.bot.send_photo(
@@ -176,6 +174,7 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("آگهی با موفقیت تایید و برای کاربران ارسال شد ✅")
         else:
             await query.edit_message_text("آگهی مورد نظر یافت نشد!")
+
 async def send_message_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id == ADMIN_ID:
         message = " ".join(context.args)
@@ -189,8 +188,9 @@ async def send_message_to_user(update: Update, context: ContextTypes.DEFAULT_TYP
         for user_id in inactive_users:
             users.discard(user_id)
         await update.message.reply_text("پیام به همه کاربران ارسال شد.")
-        # مسیر مطلق برای فایل دیتابیس
+
 DATABASE_PATH = os.path.join(os.getcwd(), 'ads.db')
+
 async def filter_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     command = update.message.text
     conn = sqlite3.connect('ads.db')
@@ -224,6 +224,7 @@ async def filter_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"Error sending ad {ad[0]}: {e}")
     
     conn.close()
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("فرآیند لغو شد.")
     return ConversationHandler.END
@@ -232,13 +233,14 @@ def save_ad(ad, approved=False):
     with closing(sqlite3.connect('ads.db')) as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO ads (title, description, price, photo, phone, username, user_id, date, approved)
+            INSERT INTO ads (title, description, price, photo, contact, username, user_id, date, approved)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             ad['title'], ad['description'], ad['price'], ad['photo'], ad['phone'],
             ad['username'], ad['user_id'], ad['date'].isoformat(), approved
         ))
         conn.commit()
+
 def init_db():
     try:
         conn = sqlite3.connect('ads.db')
@@ -262,6 +264,7 @@ def init_db():
     except Exception as e:
         print("❌ خطا در ساخت جدول:", e)
         init_db()
+
 def load_ads():
     print("🔄 در حال بارگذاری آگهی‌های تایید شده از دیتابیس...")
     conn = sqlite3.connect('ads.db')
@@ -282,42 +285,14 @@ def load_ads():
     conn.close()
     return approved_ads
 
-# بارگذاری آگهی‌های تایید شده هنگام راه‌اندازی
-approved_ads = load_ads()
-print(f"✅ {len(approved_ads)} آگهی تایید شده بارگذاری شد.")
-
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
-            START: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_start_choice)],
-            TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_title)],
-            DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_description)],
-            PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_price)],
-            PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
-            PHONE: [MessageHandler(filters.CONTACT, get_phone)],
-            CONFIRM: [CallbackQueryHandler(confirm, pattern="^confirm$")]
-        },
-        fallbacks=[CommandHandler('cancel', cancel)]
-    )
-    app.add_handler(conv_handler)
-    app.add_handler(CallbackQueryHandler(approve, pattern="^approve_\\d+$"))
-    app.add_handler(CommandHandler('send_message', send_message_to_user, filters=filters.User(ADMIN_ID)))
-    app.add_handler(CommandHandler('lowest', filter_ads))
-    app.add_handler(CommandHandler('highest', filter_ads))
-    app.add_handler(CommandHandler('newest', filter_ads))
-    app.add_handler(CommandHandler('oldest', filter_ads))
-    app.run_polling()
-
 if __name__ == '__main__':
-    init_db()  # اول جدول‌ها ساخته بشن
-    approved_ads = load_ads() 
-    # اگر دیتابیس وجود نداشت، بساز
-if not os.path.exists('ads.db'):
-    print("📦 دیتابیس وجود ندارد. در حال ساخت...")
-    init_db()
-# بعدش بارگذاری بشن
-    main()  # در نهایت اجرای ربات
+    if not os.path.exists('ads.db'):
+        print("📦 دیتابیس وجود ندارد. در حال ساخت...")
+        init_db()
+    else:
+        print("📦 دیتابیس یافت شد.")
 
-
+    approved_ads = load_ads()
+    print(f"✅ {len(approved_ads)} آگهی تایید شده بارگذاری شد.")
+    
+    main()
