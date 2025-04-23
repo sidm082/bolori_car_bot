@@ -46,15 +46,17 @@ async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
                 except:
                     continue
         return START
-    elif text == "🔔 یادآوری آگهی‌های تایید نشده":
-        if not ads:
-            await update.message.reply_text("هیچ آگهی تایید نشده‌ای وجود ندارد.")
-        else:
-            await update.message.reply_text("شما هنوز آگهی‌های تایید نشده دارید.")
-        return START
-    else:
-        await update.message.reply_text("گزینه نامعتبر است. لطفاً از دکمه‌ها استفاده کنید.")
-        return START
+   elif text == "🔔 یادآوری آگهی‌های تایید نشده":
+     with closing(sqlite3.connect('ads.db')) as conn:
+         cursor = conn.cursor()
+         cursor.execute("SELECT COUNT(*) FROM ads WHERE approved = 0")
+         count = cursor.fetchone()[0]
+
+     if count == 0:
+         await update.message.reply_text("هیچ آگهی تایید نشده‌ای وجود ندارد.")
+     else:
+         await update.message.reply_text(f"شما {count} آگهی تایید‌نشده دارید.")
+     return START
 
 async def get_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['title'] = update.message.text
@@ -110,29 +112,31 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'user_id': user.id,
         'date': datetime.now()
     }
-    
+
     # ذخیره در دیتابیس
     save_ad(ad)
-    
-    # ارسال به ادمین
-    cursor = conn.cursor()
-    cursor.execute('SELECT last_insert_rowid()')
-    ad_id = cursor.fetchone()[0]
-    
+
+    # اینجا اتصال جداگانه می‌زنیم تا ID آگهی آخر رو بگیریم
+    with closing(sqlite3.connect('ads.db')) as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT last_insert_rowid()')
+        ad_id = cursor.fetchone()[0]
+
     admin_buttons = [[InlineKeyboardButton("✅ تایید آگهی", callback_data=f"approve_{ad_id}")]]
     admin_markup = InlineKeyboardMarkup(admin_buttons)
-    
+
     caption = f"📢 آگهی جدید برای تایید\n📝 عنوان: {ad['title']}\n📄 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}\n📞 شماره تماس: {ad['phone']}\n👤 نام کاربری: {ad['username']}"
-    
+
     await context.bot.send_photo(
         chat_id=ADMIN_ID,
         photo=ad['photo'],
         caption=caption,
         reply_markup=admin_markup
     )
-    
+
     await query.edit_message_text("آگهی شما برای بررسی به ادمین ارسال شد. ✅")
     return ConversationHandler.END
+
 
 async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -303,6 +307,7 @@ def main():
     app.run_polling()
 
 if __name__ == '__main__':
-    init_db()
-    approved_ads = load_ads()
-    main()
+    init_db()  # اول دیتابیس و جدول‌ها ساخته می‌شن
+    approved_ads = load_ads()  # حالا می‌تونیم آگهی‌های تاییدشده رو بخونیم
+    main()  # اجرای اصلی ربات
+
