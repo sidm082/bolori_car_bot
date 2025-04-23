@@ -1,1 +1,1 @@
-pip install --upgrade python-telegram-bot
+python-telegram-bot==25.0.0
