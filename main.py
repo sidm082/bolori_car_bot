@@ -46,19 +46,15 @@ async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
                 except:
                     continue
         return START
-
-elif text == "🔔 یادآوری آگهی‌های تایید نشده":
-     with closing(sqlite3.connect('ads.db')) as conn:
-         cursor = conn.cursor()
-         cursor.execute("SELECT COUNT(*) FROM ads WHERE approved = 0")
-         count = cursor.fetchone()[0]
-
-     if count == 0:
-         await update.message.reply_text("هیچ آگهی تایید نشده‌ای وجود ندارد.")
-     else:
-         await update.message.reply_text(f"شما {count} آگهی تایید‌نشده دارید.")
-     return START
-
+    elif text == "🔔 یادآوری آگهی‌های تایید نشده":  # این خط باید ترازبندی درستی داشته باشد
+        if not ads:
+            await update.message.reply_text("هیچ آگهی تایید نشده‌ای وجود ندارد.")
+        else:
+            await update.message.reply_text("شما هنوز آگهی‌های تایید نشده دارید.")
+        return START
+    else:
+        await update.message.reply_text("گزینه نامعتبر است. لطفاً از دکمه‌ها استفاده کنید.")
+        return START
 async def get_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['title'] = update.message.text
     await update.message.reply_text("توضیحات آگهی را وارد کنید:")
