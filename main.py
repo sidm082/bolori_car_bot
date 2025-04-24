@@ -365,7 +365,7 @@ def main():
         logger.info("Bot is running...")
         application.run_polling()
     except Exception as e:
-        logger.error dagger_error(f"Error in main: {e}")
+        logger.error(f"Error in main: {e}")  # Fixed line
         raise
 
 if __name__ == "__main__":
