@@ -8,7 +8,7 @@ load_dotenv()
 
 CHANNEL_URL = "https://t.me/bolori_car"
 CHANNEL_ID = "@bolori_car"
-TOKEN = os.getenv("BOT_TOKEN", "7581382819:AAFqL1O8igQdRLF5f_K4YvJ1VnrehVqo5IU")
+TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = list(map(int, os.getenv("ADMIN_IDS", "5677216420").split(",")))
 
 conn = sqlite3.connect('bot.db', check_same_thread=False)
