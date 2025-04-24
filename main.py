@@ -1,7 +1,8 @@
 import os
 import sqlite3
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, ConversationHandler, CallbackQueryHandler
+from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext, ConversationHandler, CallbackQueryHandler
+from telegram.ext.filters import Filters
 from dotenv import load_dotenv
 
 load_dotenv()
