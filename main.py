@@ -17,12 +17,6 @@ TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     logger.error("BOT_TOKEN is not set in environment variables")
     raise ValueError("BOT_TOKEN is not set in environment variables")
-
-# بررسی توکن برای کاراکترهای غیرمجاز
-if not TOKEN.isascii() or any(c.isspace() for c in TOKEN):
-    logger.error("BOT_TOKEN contains invalid characters or whitespace")
-    raise ValueError("BOT_TOKEN contains invalid characters or whitespace")
-
 ADMIN_IDS = os.getenv("ADMIN_IDS", "5677216420")
 ADMIN_ID = [int(id) for id in ADMIN_IDS.split(",") if id.strip().isdigit()]
 if not ADMIN_ID:
