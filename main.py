@@ -3,6 +3,7 @@ import sqlite3
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
 from dotenv import load_dotenv
+from telegram.ext import ContextTypes
 
 load_dotenv()
 
@@ -28,7 +29,7 @@ conn.commit()
 
 AD_TITLE, AD_DESCRIPTION, AD_PRICE, AD_PHOTOS, AD_PHONE, AD_CAR_MODEL = range(1, 7)
 
-def check_membership(update: Update, context: CallbackContext):
+async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     try:
         member = context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
