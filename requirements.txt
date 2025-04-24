@@ -1,1 +1,5 @@
-pip install --upgrade pip
+python-telegram-bot
+fastapi 
+uvicorn 
+sqlite3
+pip install --upgrade python-telegram-bot
