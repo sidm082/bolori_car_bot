@@ -17,6 +17,12 @@ TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     logger.error("BOT_TOKEN is not set in environment variables")
     raise ValueError("BOT_TOKEN is not set in environment variables")
+
+# بررسی دقیق توکن
+if not TOKEN.isascii() or any(c.isspace() for c in TOKEN) or len(TOKEN) < 30:
+    logger.error("BOT_TOKEN contains invalid characters, whitespace, or is too short")
+    raise ValueError("BOT_TOKEN contains invalid characters, whitespace, or is too short")
+
 ADMIN_IDS = os.getenv("ADMIN_IDS", "5677216420")
 ADMIN_ID = [int(id) for id in ADMIN_IDS.split(",") if id.strip().isdigit()]
 if not ADMIN_ID:
@@ -67,12 +73,19 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await check_membership(update, context):
         buttons = [
-            [InlineKeyboardButton("ثبت آگهی", callback_data="post_ad")],
-            [InlineKeyboardButton("ویرایش اطلاعات", callback_data="edit_info")],
-            [InlineKeyboardButton("آمار کاربران(فقط ادمین)", callback_data="stats")],
-            [InlineKeyboardButton("نمایش تمامی آگهی‌ها", callback_data="show_ads")]
+            [InlineKeyboardButton("ثبت آگهی (/post_ad)", callback_data="post_ad")],
+            [InlineKeyboardButton("ویرایش اطلاعات (/edit_info)", callback_data="edit_info")],
+            [InlineKeyboardButton("آمار کاربران(فقط ادمین) (/stats)", callback_data="stats")],
+            [InlineKeyboardButton("نمایش تمامی آگهی‌ها (/show_ads)", callback_data="show_ads")]
         ]
-        await update.message.reply_text("به اتوگالری بلوری خوش آمدید. لطفا انتخاب کنید:", reply_markup=InlineKeyboardMarkup(buttons))
+        await update.message.reply_text(
+            "به اتوگالری بلوری خوش آمدید. لطفاً یکی از دستورات زیر را انتخاب کنید:\n"
+            "/post_ad - ثبت آگهی\n"
+            "/edit_info - ویرایش اطلاعات\n"
+            "/stats - آمار کاربران (ادمین)\n"
+            "/show_ads - نمایش آگهی‌ها",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
         conn = get_db_connection()
         try:
             c = conn.cursor()
@@ -88,7 +101,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_membership(update, context):
-        await update.callback_query.message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
+        await update.message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
         return ConversationHandler.END
 
     user_id = update.effective_user.id
@@ -97,17 +110,17 @@ async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         c = conn.cursor()
         user_data = c.execute('SELECT phone FROM users WHERE user_id = ?', (user_id,)).fetchone()
         if not user_data or not user_data[0]:
-            await update.callback_query.message.reply_text("قبل از ثبت آگهی لطفاً شماره تلفن خود را وارد کنید:")
+            await update.message.reply_text("قبل از ثبت آگهی لطفاً شماره تلفن خود را وارد کنید:")
             return AD_PHONE
     except sqlite3.Error as e:
         logger.error(f"Database error in post_ad: {e}")
-        await update.callback_query.message.reply_text("خطایی در بررسی اطلاعات رخ داد.")
+        await update.message.reply_text("خطایی در بررسی اطلاعات رخ داد.")
         return ConversationHandler.END
     finally:
         conn.close()
 
     context.user_data['ad'] = {'photos': []}
-    await update.callback_query.message.reply_text("لطفا عنوان آگهی را وارد کنید:")
+    await update.message.reply_text("لطفا عنوان آگهی را وارد کنید:")
     return AD_TITLE
 
 async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -144,7 +157,7 @@ async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await save_ad(update, context)
     elif update.message.photo:
         ad['photos'].append(update.message.photo[-1].file_id)
-        await update.message.reply_text("عکس دریافت شد. برای ارسال عکس دیگر، عکس بفرستید یا بنویسید 'تمام' برای اتمام.")
+        await update.message monopol_text("عکس دریافت شد. برای ارسال عکس دیگر، عکس بفرستید یا بنویسید 'تمام' برای اتمام.")
         return AD_PHOTOS
     elif update.message.text and update.message.text.lower() == "تمام" and ad['photos']:
         return await save_ad(update, context)
@@ -332,8 +345,8 @@ def main():
 
         conv_handler = ConversationHandler(
             entry_points=[
-                CallbackQueryHandler(post_ad, pattern="^post_ad$"),
-                CallbackQueryHandler(receive_phone, pattern="^edit_info$")
+                CommandHandler("post_ad", post_ad),
+                CommandHandler("edit_info", receive_phone)
             ],
             states={
                 AD_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)],
@@ -343,15 +356,15 @@ def main():
                 AD_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)],
                 AD_CAR_MODEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_car_model)],
             },
-            fallbacks=[CommandHandler('cancel', cancel)],
-            per_message=False  # اصلاح برای رفع هشدار
+            fallbacks=[CommandHandler("cancel", cancel)],
+            per_message=False
         )
 
         application.add_handler(CommandHandler("start", start))
         application.add_handler(conv_handler)
         application.add_handler(CallbackQueryHandler(handle_admin_action, pattern="^(approve|reject)_"))
-        application.add_handler(CallbackQueryHandler(admin_panel, pattern="^stats$"))
-        application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
+        application.add_handler(CommandHandler("stats", admin_panel))  # تغییر به CommandHandler
+        application.add_handler(CommandHandler("show_ads", show_ads))  # تغییر به CommandHandler
 
         logger.info("Bot is running...")
         application.run_polling()
