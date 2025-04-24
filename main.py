@@ -1,7 +1,7 @@
 import os
 import sqlite3
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -196,12 +196,8 @@ def handle_admin_action(update: Update, context: CallbackContext):
     except sqlite3.Error as e:
         print(f"Database error: {e}")
         query.message.reply_text("❌ خطا در پردازش درخواست.")
-
 def main():
     application = Application.builder().token(TOKEN).build()
-    dp = application.dispatcher
-
-    dp.add_handler(CommandHandler("start", start))
 
     conv_handler = ConversationHandler(
         entry_points=[
@@ -217,15 +213,18 @@ def main():
             AD_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)],
             AD_CAR_MODEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_car_model)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('cancel', cancel)],
+        per_message=False  # اگر نیاز داری از callback query در تمام پیام‌ها استفاده بشه
     )
 
-    dp.add_handler(conv_handler)
-    dp.add_handler(CallbackQueryHandler(handle_admin_action, pattern="^(approve|reject)_"))
-    dp.add_handler(CallbackQueryHandler(button_handler))
+    # اضافه کردن هندلرها
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(conv_handler)
+    application.add_handler(CallbackQueryHandler(handle_admin_action, pattern="^(approve|reject)_"))
+    application.add_handler(CallbackQueryHandler(button_handler))
 
-    application.run_polling()  # اینجا از run_polling استفاده می‌کنیم
-
+    # اجرای ربات
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
