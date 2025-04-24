@@ -11,19 +11,27 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# بارگذاری متغیرهای محیطی
 load_dotenv()
-
-# تنظیمات اولیه
-CHANNEL_URL = "https://t.me/bolori_car"
-CHANNEL_ID = "@bolori_car"
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
+    logger.error("BOT_TOKEN is not set in environment variables")
     raise ValueError("BOT_TOKEN is not set in environment variables")
+
+# بررسی توکن برای کاراکترهای غیرمجاز
+if not TOKEN.isascii() or any(c.isspace() for c in TOKEN):
+    logger.error("BOT_TOKEN contains invalid characters or whitespace")
+    raise ValueError("BOT_TOKEN contains invalid characters or whitespace")
 
 ADMIN_IDS = os.getenv("ADMIN_IDS", "5677216420")
 ADMIN_ID = [int(id) for id in ADMIN_IDS.split(",") if id.strip().isdigit()]
 if not ADMIN_ID:
+    logger.error("No valid ADMIN_IDS provided")
     raise ValueError("No valid ADMIN_IDS provided")
+
+# تنظیمات اولیه
+CHANNEL_URL = "https://t.me/bolori_car"
+CHANNEL_ID = "@bolori_car"
 
 # اتصال به دیتابیس
 def get_db_connection():
@@ -325,6 +333,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     try:
+        logger.info(f"Starting bot with token: {TOKEN[:10]}...")  # لاگ امن توکن
         application = Application.builder().token(TOKEN).build()
 
         conv_handler = ConversationHandler(
@@ -341,7 +350,7 @@ def main():
                 AD_CAR_MODEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_car_model)],
             },
             fallbacks=[CommandHandler('cancel', cancel)],
-            per_message=True
+            per_message=False  # اصلاح برای رفع هشدار
         )
 
         application.add_handler(CommandHandler("start", start))
@@ -350,12 +359,11 @@ def main():
         application.add_handler(CallbackQueryHandler(admin_panel, pattern="^stats$"))
         application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
 
+        logger.info("Bot is running...")
         application.run_polling()
     except Exception as e:
         logger.error(f"Error in main: {e}")
-    finally:
-        conn = get_db_connection()
-        conn.close()
+        raise
 
 if __name__ == "__main__":
     main()
