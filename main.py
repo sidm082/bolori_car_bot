@@ -32,172 +32,185 @@ AD_TITLE, AD_DESCRIPTION, AD_PRICE, AD_PHOTOS, AD_PHONE, AD_CAR_MODEL = range(1,
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     try:
-        member = context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+        member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
         return member.status in ['member', 'administrator', 'creator']
     except Exception as e:
         print(f"Membership check failed: {e}")
         return False
 
-def start(update: Update, context: CallbackContext):
-    if check_membership(update, context):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await check_membership(update, context):
         buttons = [
             [InlineKeyboardButton("ثبت آگهی", callback_data="post_ad")],
             [InlineKeyboardButton("ویرایش اطلاعات", callback_data="edit_info")],
             [InlineKeyboardButton("آمار کاربران(فقط ادمین)", callback_data="stats")],
             [InlineKeyboardButton("نمایش تمامی آگهی‌ها", callback_data="show_ads")]
         ]
-        update.message.reply_text(
+        await update.message.reply_text(
             "به اتوگالری بلوری خوش آمدید. لطفا انتخاب کنید:",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
         c.execute('INSERT OR IGNORE INTO users (user_id) VALUES (?)', (update.effective_user.id,))
         conn.commit()
     else:
-        update.message.reply_text("⚠️ لطفا ابتدا در کانال ما عضو شوید:\n" + CHANNEL_URL)
+        await update.message.reply_text("⚠️ لطفا ابتدا در کانال ما عضو شوید:\n" + CHANNEL_URL)
 
-def post_ad(update: Update, context: CallbackContext):
-    if not check_membership(update, context):
+async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_membership(update, context):
         if update.message:
-            update.message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
+            await update.message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
         elif update.callback_query:
-            update.callback_query.message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
+            await update.callback_query.message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
         return ConversationHandler.END
 
     context.user_data['ad'] = {}
 
     if update.message:
-        update.message.reply_text("لطفا عنوان آگهی را وارد کنید:")
+        await update.message.reply_text("لطفا عنوان آگهی را وارد کنید:")
     elif update.callback_query:
-        update.callback_query.message.reply_text("لطفا عنوان آگهی را وارد کنید:")
+        await update.callback_query.message.reply_text("لطفا عنوان آگهی را وارد کنید:")
 
     return AD_TITLE
 
-def receive_ad_title(update: Update, context: CallbackContext):
+async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['ad']['title'] = update.message.text
-    update.message.reply_text("لطفا توضیحات آگهی را وارد کنید:")
+    await update.message.reply_text("لطفا توضیحات آگهی را وارد کنید:")
     return AD_DESCRIPTION
 
-def receive_ad_description(update: Update, context: CallbackContext):
+async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['ad']['description'] = update.message.text
-    update.message.reply_text("لطفا قیمت آگهی را وارد کنید:")
+    await update.message.reply_text("لطفا قیمت آگهی را وارد کنید:")
     return AD_PRICE
 
-def receive_ad_price(update: Update, context: CallbackContext):
+async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['ad']['price'] = update.message.text
-    update.message.reply_text("لطفا عکس آگهی را ارسال کنید (یا بنویسید 'هیچ' برای ادامه):")
+    await update.message.reply_text("لطفا عکس آگهی را ارسال کنید (یا بنویسید 'هیچ' برای ادامه):")
     return AD_PHOTOS
 
-def receive_ad_photos(update: Update, context: CallbackContext):
+async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ad = context.user_data['ad']
     if update.message.text and update.message.text.lower() == "هیچ":
         ad['photos'] = ""
     elif update.message.photo:
         ad['photos'] = update.message.photo[-1].file_id
     else:
-        update.message.reply_text("لطفا یک عکس ارسال کنید یا بنویسید 'هیچ'.")
+        await update.message.reply_text("لطفا یک عکس ارسال کنید یا بنویسید 'هیچ'.")
         return AD_PHOTOS
     user_id = update.effective_user.id
     try:
         c.execute('INSERT INTO ads (user_id, title, description, price, photos) VALUES (?, ?, ?, ?, ?)',
                   (user_id, ad['title'], ad['description'], ad['price'], ad['photos']))
         conn.commit()
-        update.message.reply_text("✅ آگهی با موفقیت ثبت شد و در انتظار تایید مدیر است.")
+        await update.message.reply_text("✅ آگهی با موفقیت ثبت شد و در انتظار تایید مدیر است.")
     except sqlite3.Error as e:
         print(f"Database error: {e}")
-        update.message.reply_text("❌ خطایی در ثبت آگهی رخ داد. دوباره امتحان کنید.")
+        await update.message.reply_text("❌ خطایی در ثبت آگهی رخ داد. دوباره امتحان کنید.")
     return ConversationHandler.END
 
-def edit_info(update: Update, context: CallbackContext):
-    update.message.reply_text("لطفا شماره تلفن خود را وارد کنید:")
+async def edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("لطفا شماره تلفن خود را وارد کنید:")
     return AD_PHONE
 
-def receive_phone(update: Update, context: CallbackContext):
+async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text
     user_id = update.effective_user.id
     try:
         c.execute('UPDATE users SET phone = ? WHERE user_id = ?', (phone, user_id))
         conn.commit()
-        update.message.reply_text("شماره تلفن شما با موفقیت ثبت شد. حالا مدل ماشین خود را وارد کنید:")
+        await update.message.reply_text("شماره تلفن شما با موفقیت ثبت شد. حالا مدل ماشین خود را وارد کنید:")
     except sqlite3.Error as e:
         print(f"Database error: {e}")
-        update.message.reply_text("❌ خطایی رخ داد. دوباره امتحان کنید.")
+        await update.message.reply_text("❌ خطایی رخ داد. دوباره امتحان کنید.")
         return AD_PHONE
     return AD_CAR_MODEL
 
-def receive_car_model(update: Update, context: CallbackContext):
+async def receive_car_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     car_model = update.message.text
     user_id = update.effective_user.id
     try:
         c.execute('UPDATE users SET car_model = ? WHERE user_id = ?', (car_model, user_id))
         conn.commit()
-        update.message.reply_text("✅ مدل ماشین شما با موفقیت ثبت شد.")
+        await update.message.reply_text("✅ مدل ماشین شما با موفقیت ثبت شد.")
     except sqlite3.Error as e:
         print(f"Database error: {e}")
-        update.message.reply_text("❌ خطایی رخ داد. دوباره امتحان کنید.")
+        await update.message.reply_text("❌ خطایی رخ داد. دوباره امتحان کنید.")
         return AD_CAR_MODEL
     return ConversationHandler.END
 
-def cancel(update: Update, context: CallbackContext):
-    update.message.reply_text("❌ عملیات لغو شد.")
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("❌ عملیات لغو شد.")
     return ConversationHandler.END
 
-def admin_panel(update: Update, context: CallbackContext):
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_ID:
-        update.message.reply_text("❌ دسترسی ممنوع!")
+        await update.message.reply_text("❌ دسترسی ممنوع!")
         return
     ads = c.execute('SELECT * FROM ads WHERE status="pending"').fetchall()
     if not ads:
-        update.message.reply_text("هیچ آگهی در انتظار تایید نیست.")
+        await update.message.reply_text("هیچ آگهی در انتظار تایید نیست.")
         return
     for ad in ads:
         ad_text = f"🆔 آگهی: {ad[0]}\n👤 کاربر: {ad[1]}\n📌 عنوان: {ad[2]}"
         buttons = [[InlineKeyboardButton("تایید", callback_data=f"approve_{ad[0]}"),
                     InlineKeyboardButton("رد", callback_data=f"reject_{ad[0]}")]]
-        update.message.reply_text(ad_text, reply_markup=InlineKeyboardMarkup(buttons))
+        await update.message.reply_text(ad_text, reply_markup=InlineKeyboardMarkup(buttons))
 
-def show_ads(update: Update, context: CallbackContext):
+async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    query.answer()
+    await query.answer()
     ads = c.execute('SELECT * FROM ads WHERE status="approved"').fetchall()
     if not ads:
-        query.message.reply_text("هیچ آگهی تایید شده‌ای وجود ندارد.")
+        await query.message.reply_text("هیچ آگهی تایید شده‌ای وجود ندارد.")
         return
     for ad in ads:
         ad_text = f"📌 عنوان: {ad[2]}\n💬 توضیحات: {ad[3]}\n💰 قیمت: {ad[4]}"
         if ad[5]:
-            context.bot.send_photo(chat_id=query.message.chat.id, photo=ad[5], caption=ad_text)
+            await context.bot.send_photo(chat_id=query.message.chat.id, photo=ad[5], caption=ad_text)
         else:
-            query.message.reply_text(ad_text)
+            await query.message.reply_text(ad_text)
 
-def stats(update: Update, context: CallbackContext):
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    query.answer()
+    await query.answer()
     if update.effective_user.id not in ADMIN_ID:
-        query.message.reply_text("❌ دسترسی ممنوع!")
+        await query.message.reply_text("❌ دسترسی ممنوع!")
         return
     total_users = c.execute('SELECT COUNT(*) FROM users').fetchone()[0]
     total_ads = c.execute('SELECT COUNT(*) FROM ads').fetchone()[0]
-    query.message.reply_text(f"📊 آمار:\nکاربران: {total_users}\nآگهی‌ها: {total_ads}")
+    await query.message.reply_text(f"📊 آمار:\nکاربران: {total_users}\nآگهی‌ها: {total_ads}")
 
-def handle_admin_action(update: Update, context: CallbackContext):
+async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    query.answer()
+    await query.answer()
     if update.effective_user.id not in ADMIN_ID:
-        query.message.reply_text("❌ دسترسی ممنوع!")
+        await query.message.reply_text("❌ دسترسی ممنوع!")
         return
     action, ad_id = query.data.split("_")
     try:
         if action == "approve":
             c.execute('UPDATE ads SET status="approved" WHERE id=?', (ad_id,))
-            query.message.reply_text(f"آگهی {ad_id} تایید شد.")
+            await query.message.reply_text(f"آگهی {ad_id} تایید شد.")
         elif action == "reject":
             c.execute('UPDATE ads SET status="rejected" WHERE id=?', (ad_id,))
-            query.message.reply_text(f"آگهی {ad_id} رد شد.")
+            await query.message.reply_text(f"آگهی {ad_id} رد شد.")
         conn.commit()
     except sqlite3.Error as e:
         print(f"Database error: {e}")
-        query.message.reply_text("❌ خطا در پردازش درخواست.")
-def main():
+        await query.message.reply_text("❌ خطا در پردازش درخواست.")
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    data = query.data
+    if data == "post_ad":
+        await post_ad(update, context)
+    elif data == "edit_info":
+        await edit_info(update, context)
+    elif data == "stats":
+        await stats(update, context)
+    elif data == "show_ads":
+        await show_ads(update, context)
+
+async def main():
     application = Application.builder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
@@ -215,17 +228,16 @@ def main():
             AD_CAR_MODEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_car_model)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
-        per_message=False  # اگر نیاز داری از callback query در تمام پیام‌ها استفاده بشه
+        per_message=False
     )
 
-    # اضافه کردن هندلرها
     application.add_handler(CommandHandler("start", start))
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(handle_admin_action, pattern="^(approve|reject)_"))
     application.add_handler(CallbackQueryHandler(button_handler))
 
-    # اجرای ربات
-    application.run_polling()
+    await application.run_polling()
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
