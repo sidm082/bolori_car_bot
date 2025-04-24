@@ -1,13 +1,3 @@
-import logging
-import sqlite3
-import os
-from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler, CallbackQueryHandler
-from telegram.error import Conflict
-from flask import Flask
-from threading import Thread
-import matplotlib.pyplot as plt
-
 import os
 import sqlite3
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
