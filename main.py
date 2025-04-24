@@ -199,27 +199,33 @@ def handle_admin_action(update: Update, context: CallbackContext):
 
 def main():
     application = Application.builder().token(TOKEN).build()
+    dp = application.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start), CallbackQueryHandler(post_ad, pattern="post_ad")],
+        entry_points=[
+            CommandHandler('post', post_ad),
+            CallbackQueryHandler(post_ad, pattern="^post_ad$"),
+            CallbackQueryHandler(edit_info, pattern="^edit_info$")
+        ],
         states={
-            AD_TITLE: [MessageHandler(filters.TEXT, receive_ad_title)],
-            AD_DESCRIPTION: [MessageHandler(filters.TEXT, receive_ad_description)],
-            AD_PRICE: [MessageHandler(filters.TEXT, receive_ad_price)],
-            AD_PHOTOS: [MessageHandler(filters.TEXT | filters.PHOTO, receive_ad_photos)],
-            AD_PHONE: [MessageHandler(filters.TEXT, receive_phone)],
-            AD_CAR_MODEL: [MessageHandler(filters.TEXT, receive_car_model)]
+            AD_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)],
+            AD_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)],
+            AD_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)],
+            AD_PHOTOS: [MessageHandler(filters.PHOTO | filters.TEXT, receive_ad_photos)],
+            AD_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)],
+            AD_CAR_MODEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_car_model)],
         },
-        fallbacks=[CommandHandler("cancel", cancel)]
+        fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(admin_panel, pattern="stats"))
-    application.add_handler(CallbackQueryHandler(show_ads, pattern="show_ads"))
-    application.add_handler(conv_handler)
-    application.add_handler(CallbackQueryHandler(handle_admin_action, pattern="^(approve|reject)_"))
+    dp.add_handler(conv_handler)
+    dp.add_handler(CallbackQueryHandler(handle_admin_action, pattern="^(approve|reject)_"))
+    dp.add_handler(CallbackQueryHandler(button_handler))
 
-    application.run_polling()
+    application.run_polling()  # اینجا از run_polling استفاده می‌کنیم
+
 
 if __name__ == "__main__":
     main()
