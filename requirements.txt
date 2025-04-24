@@ -1,4 +1,4 @@
-python-telegram-bot==21.11
+python-telegram-bot==20.3
 fastapi
 uvicorn
 flask
