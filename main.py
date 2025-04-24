@@ -157,7 +157,7 @@ async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await save_ad(update, context)
     elif update.message.photo:
         ad['photos'].append(update.message.photo[-1].file_id)
-        await update.message monopol_text("عکس دریافت شد. برای ارسال عکس دیگر، عکس بفرستید یا بنویسید 'تمام' برای اتمام.")
+        await update.message.reply_text("عکس دریافت شد. برای ارسال عکس دیگر، عکس بفرستید یا بنویسید 'تمام' برای اتمام.")
         return AD_PHOTOS
     elif update.message.text and update.message.text.lower() == "تمام" and ad['photos']:
         return await save_ad(update, context)
@@ -288,49 +288,45 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         conn.close()
 
 async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
     one_year_ago = datetime.now() - timedelta(days=365)
     conn = get_db_connection()
     try:
         c = conn.cursor()
         ads = c.execute("SELECT * FROM ads WHERE status='approved' AND datetime(created_at) >= ?", (one_year_ago.isoformat(),)).fetchall()
         if not ads:
-            await query.message.reply_text("هیچ آگهی تایید شده‌ای وجود ندارد.")
+            await update.message.reply_text("هیچ آگهی تایید شده‌ای وجود ندارد.")
             return
         for ad in ads:
             text = f"📌 عنوان: {ad['title']}\n💬 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}"
             try:
                 if ad['photos']:
                     for photo in ad['photos'].split(","):
-                        await context.bot.send_photo(chat_id=query.message.chat.id, photo=photo, caption=text)
+                        await context.bot.send_photo(chat_id=update.message.chat_id, photo=photo, caption=text)
                         await asyncio.sleep(0.5)
                 else:
-                    await query.message.reply_text(text)
+                    await update.message.reply_text(text)
                 await asyncio.sleep(0.5)
             except Exception as e:
                 logger.error(f"Failed to send ad {ad['id']}: {e}")
     except sqlite3.Error as e:
         logger.error(f"Database error in show_ads: {e}")
-        await query.message.reply_text("خطایی در نمایش آگهی‌ها رخ داد.")
+        await update.message.reply_text("خطایی در نمایش آگهی‌ها رخ داد.")
     finally:
         conn.close()
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
     if update.effective_user.id not in ADMIN_ID:
-        await query.message.reply_text("❌ دسترسی ممنوع!")
+        await update.message.reply_text("❌ دسترسی ممنوع!")
         return
     conn = get_db_connection()
     try:
         c = conn.cursor()
         total_users = c.execute('SELECT COUNT(*) FROM users').fetchone()[0]
         total_ads = c.execute('SELECT COUNT(*) FROM ads').fetchone()[0]
-        await query.message.reply_text(f"📊 آمار:\nکاربران: {total_users}\nآگهی‌ها: {total_ads}")
+        await update.message.reply_text(f"📊 آمار:\nکاربران: {total_users}\nآگهی‌ها: {total_ads}")
     except sqlite3.Error as e:
         logger.error(f"Database error in stats: {e}")
-        await query.message.reply_text("خطایی در نمایش آمار رخ داد.")
+        await update.message.reply_text("خطایی در نمایش آمار رخ داد.")
     finally:
         conn.close()
 
@@ -363,13 +359,13 @@ def main():
         application.add_handler(CommandHandler("start", start))
         application.add_handler(conv_handler)
         application.add_handler(CallbackQueryHandler(handle_admin_action, pattern="^(approve|reject)_"))
-        application.add_handler(CommandHandler("stats", admin_panel))  # تغییر به CommandHandler
-        application.add_handler(CommandHandler("show_ads", show_ads))  # تغییر به CommandHandler
+        application.add_handler(CommandHandler("stats", stats))
+        application.add_handler(CommandHandler("show_ads", show_ads))
 
         logger.info("Bot is running...")
         application.run_polling()
     except Exception as e:
-        logger.error(f"Error in main: {e}")
+        logger.error dagger_error(f"Error in main: {e}")
         raise
 
 if __name__ == "__main__":
