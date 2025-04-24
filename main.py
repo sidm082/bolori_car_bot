@@ -1,31 +1,194 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ConversationHandler,
-    ContextTypes,
-    filters
-)
-from datetime import datetime
+import logging
 import sqlite3
 import os
-from contextlib import closing
-import logging
+from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler, CallbackQueryHandler
+from telegram.error import Conflict
+from flask import Flask
 from threading import Thread
-from fastapi import FastAPI
-import uvicorn
+import matplotlib.pyplot as plt
 
-# تنظیم لاگ
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# پیکربندی لاگر
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# تنظیمات اولیه
 TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_IDS = [123456789]  # آیدی عددی ادمین‌ها
+
+# مراحل گفت‌وگو
+START, TITLE, DESCRIPTION, PRICE, PHOTO, PHONE, CONFIRM = range(7)
+
+app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return "ربات روشن است."
+
+def run_web_server():
+    app.run(host="0.0.0.0", port=8080)
+
+# پایگاه‌داده
+def init_db():
+    conn = sqlite3.connect("ads.db")
+    c = conn.cursor()
+    c.execute("""CREATE TABLE IF NOT EXISTS ads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        username TEXT,
+        title TEXT,
+        description TEXT,
+        price TEXT,
+        photo_file_id TEXT,
+        phone TEXT,
+        approved INTEGER
+    )""")
+    conn.commit()
+    conn.close()
+
+def save_ad(ad):
+    conn = sqlite3.connect("ads.db")
+    c = conn.cursor()
+    c.execute("""INSERT INTO ads (user_id, username, title, description, price, photo_file_id, phone, approved) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 0)""",
+              (ad['user_id'], ad['username'], ad['title'], ad['description'], ad['price'], ad['photo'], ad['phone']))
+    conn.commit()
+    conn.close()
+
+def load_ads():
+    conn = sqlite3.connect("ads.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM ads WHERE approved = 1")
+    rows = c.fetchall()
+    conn.close()
+    return [{"title": row[3], "description": row[4], "price": row[5], "photo": row[6]} for row in rows]
+
+def get_unapproved_ads():
+    conn = sqlite3.connect("ads.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM ads WHERE approved = 0")
+    ads = c.fetchall()
+    conn.close()
+    return ads
+
+def approve_ad(ad_id):
+    conn = sqlite3.connect("ads.db")
+    c = conn.cursor()
+    c.execute("UPDATE ads SET approved = 1 WHERE id = ?", (ad_id,))
+    conn.commit()
+    conn.close()
+
+# هندلرهای گفت‌وگو
+async def handle_start(update: Update, context: CallbackContext):
+    button1 = KeyboardButton("ثبت آگهی")
+    button2 = KeyboardButton("مشاهده آگهی‌ها")
+    markup = ReplyKeyboardMarkup([[button1, button2]], resize_keyboard=True)
+    await update.message.reply_text("یکی از گزینه‌ها را انتخاب کنید:", reply_markup=markup)
+    return START
+
+async def handle_start_choice(update: Update, context: CallbackContext):
+    choice = update.message.text
+    if choice == "ثبت آگهی":
+        await update.message.reply_text("عنوان آگهی را وارد کنید:", reply_markup=ReplyKeyboardRemove())
+        return TITLE
+    elif choice == "مشاهده آگهی‌ها":
+        await send_filtered_ads(update, context)
+        return ConversationHandler.END
+    else:
+        await update.message.reply_text("لطفاً از دکمه‌ها استفاده کنید.")
+        return START
+
+async def get_title(update: Update, context: CallbackContext):
+    context.user_data["title"] = update.message.text
+    await update.message.reply_text("توضیحات آگهی را وارد کنید:")
+    return DESCRIPTION
+
+async def get_description(update: Update, context: CallbackContext):
+    context.user_data["description"] = update.message.text
+    await update.message.reply_text("قیمت را وارد کنید (عدد):")
+    return PRICE
+
+async def get_price(update: Update, context: CallbackContext):
+    context.user_data["price"] = update.message.text
+    await update.message.reply_text("یک عکس از آگهی ارسال کنید:")
+    return PHOTO
+
+async def get_photo(update: Update, context: CallbackContext):
+    photo_file = update.message.photo[-1].file_id
+    context.user_data["photo"] = photo_file
+
+    button = KeyboardButton("ارسال شماره تماس", request_contact=True)
+    markup = ReplyKeyboardMarkup([[button]], resize_keyboard=True)
+    await update.message.reply_text("شماره تماس خود را ارسال کنید:", reply_markup=markup)
+    return PHONE
+
+async def get_phone(update: Update, context: CallbackContext):
+    contact = update.message.contact
+    context.user_data["phone"] = contact.phone_number
+    keyboard = [[InlineKeyboardButton("تأیید نهایی", callback_data="confirm")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("برای تأیید نهایی، دکمه زیر را بزنید:", reply_markup=reply_markup)
+    return CONFIRM
+
+async def confirm(update: Update, context: CallbackContext):
+    query = update.callback_query
+    await query.answer()
+
+    ad = context.user_data
+    user = query.from_user
+    ad['user_id'] = user.id
+    ad['username'] = user.username or "ندارد"
+    save_ad(ad)
+
+    for admin_id in ADMIN_IDS:
+        msg = f"آگهی جدید از @{ad['username']}:\nعنوان: {ad['title']}\nتوضیحات: {ad['description']}\nقیمت: {ad['price']}\n📞 شماره: {ad['phone']}"
+        await context.bot.send_photo(chat_id=admin_id, photo=ad['photo'], caption=msg)
+
+    await query.edit_message_text("آگهی شما ثبت شد و در انتظار تأیید است.")
+    return ConversationHandler.END
+
+async def send_filtered_ads(update: Update, context: CallbackContext):
+    ads = load_ads()
+    if not ads:
+        await update.message.reply_text("فعلاً هیچ آگهی‌ای ثبت نشده.")
+        return
+
+    for ad in ads:
+        msg = f"عنوان: {ad['title']}\nتوضیحات: {ad['description']}\nقیمت: {ad['price']} تومان"
+        await context.bot.send_photo(chat_id=update.effective_chat.id, photo=ad['photo'], caption=msg)
+
+# راه‌اندازی ربات
+def main():
+    init_db()
+    global approved_ads
+    approved_ads = load_ads()
+
+    application = Application.builder().token(TOKEN).build()
+
+    Thread(target=run_web_server).start()
+
+    conv_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, handle_start_choice)],
+        states={
+            START: [MessageHandler(filters.TEXT, handle_start_choice)],
+            TITLE: [MessageHandler(filters.TEXT, get_title)],
+            DESCRIPTION: [MessageHandler(filters.TEXT, get_description)],
+            PRICE: [MessageHandler(filters.TEXT, get_price)],
+            PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
+            PHONE: [MessageHandler(filters.CONTACT, get_phone)],
+            CONFIRM: [CallbackQueryHandler(confirm, pattern="^confirm$")]
+        },
+        fallbacks=[],
+    )
+    application.add_handler(conv_handler)
+
+    try:
+        application.run_polling()
+    except Conflict:
+        logger.warning("⚠️ خطا: یک نمونه دیگر از ربات در حال اجراست!")
+
+if __name__ == "__main__":
+    main()
+
 if not TOKEN:
     raise ValueError("BOT_TOKEN environment variable is not set")
 ADMIN_ID = 5677216420  # جایگزین با آی دی ادمین واقعی
@@ -338,8 +501,10 @@ def main():
         fallbacks=[],
     )
     application.add_handler(conv_handler)
-    
-    application.run_polling()
 
+    try:
+        application.run_polling()
+    except Conflict:
+        logger.warning("⚠️ خطا: یک نمونه دیگر از ربات در حال اجراست!")
 if __name__ == "__main__":
     main()
