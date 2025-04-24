@@ -2,4 +2,5 @@ python-telegram-bot==20.3
 fastapi
 uvicorn
 flask
+matplotlib
 
