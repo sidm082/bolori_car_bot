@@ -3,4 +3,5 @@ fastapi
 uvicorn
 flask
 matplotlib
-
+pandas
+numpy
