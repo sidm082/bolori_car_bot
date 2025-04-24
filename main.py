@@ -25,7 +25,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # تنظیمات اولیه
-TOKEN = os.getenv("BOT_TOKEN")
+#TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = "7926418742:AAHg2kpMAUJDe27KFaCujIx4icG8NWtw3qg"
 if not TOKEN:
     raise ValueError("BOT_TOKEN environment variable is not set")
 ADMIN_ID = 5677216420  # جایگزین با آی دی ادمین واقعی
