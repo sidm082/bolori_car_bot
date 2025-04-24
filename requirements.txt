@@ -1,7 +1,1 @@
 pip install --upgrade pip
-fastapi
-uvicorn
-flask
-matplotlib
-pandas
-numpy
