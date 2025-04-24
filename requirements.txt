@@ -1,5 +1,4 @@
 python-telegram-bot
-fastapi 
-uvicorn 
+fastapi
+uvicorn
 sqlite3
-pip install --upgrade python-telegram-bot
