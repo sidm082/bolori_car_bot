@@ -60,18 +60,18 @@ conn.close()
 # مراحل ConversationHandler
 AD_TITLE, AD_DESCRIPTION, AD_PRICE, AD_PHOTOS, AD_PHONE, AD_CAR_MODEL = range(1, 7)
 
-#async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
-   # user_id = update.effective_user.id
-   # try:
-     #   member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-    #    return member.status in ['member', 'administrator', 'creator']
-   # except Exception as e:
-      #  logger.error(f"Membership check failed for user {user_id}: {e}")
-      #  await update.message.reply_text("خطایی در بررسی عضویت رخ داد. لطفاً دوباره تلاش کنید.")
-      #  return False
+async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    try:
+        member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+        return member.status in ['member', 'administrator', 'creator']
+    except Exception as e:
+        logger.error(f"Membership check failed for user {user_id}: {e}")
+        await update.message.reply_text("خطایی در بررسی عضویت رخ داد. لطفاً دوباره تلاش کنید.")
+        return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-  #  if await check_membership(update, context):
+    if await check_membership(update, context):
         buttons = [
             [InlineKeyboardButton("ثبت آگهی (/post_ad)", callback_data="post_ad")],
             [InlineKeyboardButton("ویرایش اطلاعات (/edit_info)", callback_data="edit_info")],
@@ -96,16 +96,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("خطایی در ثبت اطلاعات رخ داد.")
         finally:
             conn.close()
-  #  else:
- #       await update.message.reply_text("⚠️ لطفا ابتدا در کانال ما عضو شوید:\n" + CHANNEL_URL)
+   else:
+        await update.message.reply_text("⚠️ لطفا ابتدا در کانال ما عضو شوید:\n" + CHANNEL_URL)
 
 #async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-  #  if not await check_membership(update, context):
-    #    await update.message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
-     ##   return ConversationHandler.END
+   if not await check_membership(update, context):
+       await update.message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
+       return ConversationHandler.END
 
-     # user_id = update.effective_user.id
-     # conn = get_db_connection()
+         user_id = update.effective_user.id
+         conn = get_db_connection()
     try:
         c = conn.cursor()
         user_data = c.execute('SELECT phone FROM users WHERE user_id = ?', (user_id,)).fetchone()
