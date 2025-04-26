@@ -3,7 +3,7 @@ import sqlite3
 import logging
 import asyncio
 from datetime import datetime, timedelta
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ConversationHandler, ContextTypes
 from dotenv import load_dotenv
 
@@ -44,7 +44,7 @@ def get_db_connection():
 conn = get_db_connection()
 c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS users
-             (user_id INTEGER PRIMARY KEY, joined INTEGER DEFAULT 0, phone TEXT, car_model TEXT)''')
+             (user_id INTEGER PRIMARY KEY, joined INTEGER DEFAULT 0, phone TEXT)''')
 c.execute('''CREATE TABLE IF NOT EXISTS ads
              (id INTEGER PRIMARY KEY AUTOINCREMENT,
               user_id INTEGER,
@@ -59,7 +59,7 @@ conn.commit()
 conn.close()
 
 # مراحل ConversationHandler
-AD_TITLE, AD_DESCRIPTION, AD_PRICE, AD_PHOTOS, AD_PHONE, AD_CAR_MODEL = range(1, 7)
+AD_TITLE, AD_DESCRIPTION, AD_PRICE, AD_PHOTOS, AD_PHONE = range(1, 6)
 
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -141,8 +141,17 @@ async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with conn:
             user_data = conn.execute('SELECT phone FROM users WHERE user_id = ?', (user_id,)).fetchone()
         if not user_data or not user_data[0]:
-            await message.reply_text("📞 قبل از ثبت آگهی لطفاً شماره تلفن خود را وارد کنید:")
-            context.user_data['after_car_model'] = AD_TITLE
+            # ایجاد کیبورد برای درخواست شماره
+            keyboard = ReplyKeyboardMarkup(
+                [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
+                resize_keyboard=True,
+                one_time_keyboard=True
+            )
+            await message.reply_text(
+                "📞 لطفاً شماره تلفن خود را با زدن دکمه زیر ارسال کنید:",
+                reply_markup=keyboard
+            )
+            context.user_data['after_phone'] = AD_TITLE
             return AD_PHONE
     except sqlite3.Error as e:
         logger.error(f"Database error in post_ad: {e}")
@@ -162,7 +171,7 @@ async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AD_TITLE
     context.user_data['ad']['title'] = title
     await update.effective_message.reply_text("لطفا توضیحات آگهی را وارد کنید:")
-    return AD_DESCRIPTION
+
 
 async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
     description = update.message.text.strip()
@@ -214,7 +223,7 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(
                     chat_id=admin_id,
-                    text=f"آگهی جدید ثبت شد:\nعنوان: {ad['title']}\nID: {ad_id}\nلطفاً در پنل ادمین بررسی کنید."
+                    text=f"آگهی جدید ثبت شد:\nعنوان:{ad['title']}\nID: {ad_id}\nلطفاً در پنل ادمین بررسی کنید."
                 )
             except Exception as e:
                 logger.error(f"Failed to notify admin {admin_id}: {e}")
@@ -227,50 +236,64 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
 async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    phone = update.message.text.strip()
-    if not phone.replace("+", "").isdigit() or len(phone) < 10:
-        await update.effective_message.reply_text("لطفاً یک شماره تلفن معتبر وارد کنید.")
-        return AD_PHONE
     user_id = update.effective_user.id
+    phone = None
+
+    # بررسی اگر کاربر از دکمه تماس استفاده کرده باشد
+    if update.message.contact:
+        phone = update.message.contact.phone_number.strip()
+    # بررسی اگر کاربر شماره را دستی وارد کرده باشد
+    elif update.message.text:
+        phone = update.message.text.strip()
+
+    # اعتبارسنجی شماره تلفن
+    if not phone or not phone.replace("+", "").isdigit() or len(phone.replace("+", "")) < 10:
+        keyboard = ReplyKeyboardMarkup(
+            [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        await update.effective_message.reply_text(
+            "⚠️ لطفاً یک شماره تلفن معتبر وارد کنید یا از دکمه زیر استفاده کنید:",
+            reply_markup=keyboard
+        )
+        return AD_PHONE
+
     conn = get_db_connection()
     try:
         c = conn.cursor()
         c.execute('UPDATE users SET phone = ? WHERE user_id = ?', (phone, user_id))
         conn.commit()
-        await update.effective_message.reply_text("شماره تلفن ثبت شد. حالا مدل ماشین خود را وارد کنید:")
-        return AD_CAR_MODEL
+        # حذف کیبورد موقت
+        await update.effective_message.reply_text(
+            "✅ شماره تلفن با موفقیت ثبت شد.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return context.user_data.pop('after_phone', ConversationHandler.END)
     except sqlite3.Error as e:
         logger.error(f"Database error in receive_phone: {e}")
-        await update.effective_message.reply_text("خطایی در ثبت اطلاعات رخ داد.")
+        await update.effective_message.reply_text(
+            "❌ خطایی در ثبت اطلاعات رخ داد. لطفاً دوباره تلاش کنید.",
+            reply_markup=ReplyKeyboardRemove()
+        )
         return AD_PHONE
-    finally:
-        conn.close()
-
-async def receive_car_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    model = update.message.text.strip()
-    if not model:
-        await update.effective_message.reply_text("لطفاً مدل ماشین معتبر وارد کنید.")
-        return AD_CAR_MODEL
-    user_id = update.effective_user.id
-    conn = get_db_connection()
-    try:
-        c = conn.cursor()
-        c.execute('UPDATE users SET car_model = ? WHERE user_id = ?', (model, user_id))
-        conn.commit()
-        await update.effective_message.reply_text("✅ مدل ماشین با موفقیت ثبت شد.")
-        return context.user_data.pop('after_car_model', ConversationHandler.END)
-    except sqlite3.Error as e:
-        logger.error(f"Database error in receive_car_model: {e}")
-        await update.effective_message.reply_text("خطایی در ثبت اطلاعات رخ داد.")
-        return AD_CAR_MODEL
     finally:
         conn.close()
 
 async def start_edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_membership(update, context):
         return ConversationHandler.END
-    context.user_data['after_car_model'] = ConversationHandler.END
-    await update.effective_message.reply_text("لطفاً شماره تلفن خود را وارد کنید:")
+    context.user_data['after_phone'] = ConversationHandler.END
+    # ایجاد کیبورد برای درخواست شماره
+    keyboard = ReplyKeyboardMarkup(
+        [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    await update.effective_message.reply_text(
+        "📞 لطفاً شماره تلفن خود را با زدن دکمه زیر ارسال کنید:",
+        reply_markup=keyboard
+    )
     return AD_PHONE
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -390,8 +413,7 @@ def main():
                 AD_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)],
                 AD_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)],
                 AD_PHOTOS: [MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), receive_ad_photos)],
-                AD_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)],
-                AD_CAR_MODEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_car_model)],
+                AD_PHONE: [MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), receive_phone)],
             },
             fallbacks=[CommandHandler("cancel", cancel)],
             per_message=False
