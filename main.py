@@ -104,7 +104,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     #    await update.message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
      ##   return ConversationHandler.END
 
-     user_id = update.effective_user.id
+      user_id = update.effective_user.id
       conn = get_db_connection()
     try:
         c = conn.cursor()
