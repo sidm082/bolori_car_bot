@@ -32,7 +32,7 @@ if not ADMIN_ID:
 # تنظیمات اولیه
 CHANNEL_URL = "https://t.me/boloricar0"
 CHANNEL_ID = "@boloricar0"
-
+CHANNEL_USERNAME = "boloricar0"
 # اتصال به دیتابیس
 def get_db_connection():
     conn = sqlite3.connect('bot.db', check_same_thread=False)
