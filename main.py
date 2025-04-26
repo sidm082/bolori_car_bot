@@ -300,51 +300,160 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_ID:
         await update.effective_message.reply_text("❌ دسترسی ممنوع!")
         return
+
+    # تنظیمات صفحه‌بندی
+    page = context.user_data.get('admin_page', 1)
+    items_per_page = 5
+    status_filter = context.user_data.get('admin_status_filter', 'pending')  # فیلتر پیش‌فرض: در انتظار
+
     conn = get_db_connection()
     try:
         c = conn.cursor()
-        ads = c.execute('SELECT * FROM ads WHERE status="pending"').fetchall()
+        # شمارش کل آگهی‌ها برای صفحه‌بندی
+        total_ads = c.execute('SELECT COUNT(*) FROM ads WHERE status = ?', (status_filter,)).fetchone()[0]
+        total_pages = (total_ads + items_per_page - 1) // items_per_page
+
+        # بررسی صفحه معتبر
+        if page < 1 or page > total_pages:
+            page = 1
+            context.user_data['admin_page'] = page
+
+        # دریافت آگهی‌های صفحه فعلی
+        offset = (page - 1) * items_per_page
+        ads = c.execute(
+            'SELECT * FROM ads WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+            (status_filter, items_per_page, offset)
+        ).fetchall()
+
         if not ads:
-            await update.effective_message.reply_text("هیچ آگهی در انتظار تأیید نیست.")
+            await update.effective_message.reply_text(
+                f"هیچ آگهی‌ای با وضعیت '{status_filter}' یافت نشد.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 تغییر وضعیت", callback_data="change_status")],
+                    [InlineKeyboardButton("🏠 بازگشت", callback_data="admin_exit")]
+                ])
+            )
             return
+
+        # نمایش آگهی‌ها
         for ad in ads:
             user_info = c.execute('SELECT phone FROM users WHERE user_id = ?', (ad['user_id'],)).fetchone()
             phone = user_info['phone'] if user_info else "نامشخص"
             user = await context.bot.get_chat(ad['user_id'])
             username = user.username or f"{user.first_name} {user.last_name or ''}"
-            ad_text = f"🆔 آگهی: {ad['id']}\n👤 کاربر: {username}\n📞 شماره: {phone}\n📌 عنوان: {ad['title']}"
-            buttons = [[InlineKeyboardButton("تأیید", callback_data=f"approve_{ad['id']}"),
-                        InlineKeyboardButton("رد", callback_data=f"reject_{ad['id']}")]]
-            await update.effective_message.reply_text(ad_text, reply_markup=InlineKeyboardMarkup(buttons))
+
+            ad_text = (
+                f"🆔 آگهی: {ad['id']}\n"
+                f"👤 کاربر: {username}\n"
+                f"📞 شماره: {phone}\n"
+                f"📌 عنوان: {ad['title']}\n"
+                f"💬 توضیحات: {ad['description']}\n"
+                f"💰 قیمت: {ad['price']}\n"
+                f"📅 تاریخ: {ad['created_at']}\n"
+                f"📸 تصاویر: {'دارد' if ad['photos'] else 'ندارد'}\n"
+                f"📊 وضعیت: {ad['status']}"
+            )
+
+            buttons = [
+                [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_{ad['id']}"),
+                 InlineKeyboardButton("❌ رد", callback_data=f"reject_{ad['id']}")],
+                [InlineKeyboardButton("🖼️ نمایش تصاویر", callback_data=f"show_photos_{ad['id']}")]
+            ]
+
+            # ارسال پیام یا تصاویر
+            if ad['photos']:
+                for photo in ad['photos'].split(","):
+                    await context.bot.send_photo(
+                        chat_id=update.effective_chat.id,
+                        photo=photo,
+                        caption=ad_text,
+                        reply_markup=InlineKeyboardMarkup(buttons)
+                    )
+                    await asyncio.sleep(0.5)
+            else:
+                await update.effective_message.reply_text(
+                    ad_text,
+                    reply_markup=InlineKeyboardMarkup(buttons)
+                )
             await asyncio.sleep(0.5)
+
+        # دکمه‌های ناوبری صفحه
+        nav_buttons = []
+        if page > 1:
+            nav_buttons.append(InlineKeyboardButton("⬅️ صفحه قبلی", callback_data=f"page_{page-1}"))
+        if page < total_pages:
+            nav_buttons.append(InlineKeyboardButton("➡️ صفحه بعدی", callback_data=f"page_{page+1}"))
+        nav_buttons_row = nav_buttons if nav_buttons else []
+
+        # منوی اصلی پنل ادمین
+        await update.effective_message.reply_text(
+            f"📄 صفحه {page} از {total_pages} (وضعیت: {status_filter})",
+            reply_markup=InlineKeyboardMarkup([
+                nav_buttons_row,
+                [InlineKeyboardButton("🔄 تغییر وضعیت", callback_data="change_status")],
+                [InlineKeyboardButton("🏠 بازگشت", callback_data="admin_exit")]
+            ])
+        )
+
     except Exception as e:
         logger.error(f"Error in admin_panel: {e}")
-        await update.effective_message.reply_text("خطایی در نمایش آگهی‌ها رخ داد.")
+        await update.effective_message.reply_text(
+            "❌ خطایی در نمایش آگهی‌ها رخ داد. لطفاً دوباره تلاش کنید."
+        )
     finally:
         conn.close()
 
-async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if update.effective_user.id not in ADMIN_ID:
         await query.message.reply_text("❌ دسترسی ممنوع!")
         return
-    action, ad_id = query.data.split("_")
-    conn = get_db_connection()
-    try:
-        c = conn.cursor()
-        if action == "approve":
-            c.execute('UPDATE ads SET status="approved" WHERE id=?', (ad_id,))
-            await query.message.reply_text(f"آگهی {ad_id} تأیید شد.")
-        elif action == "reject":
-            c.execute('UPDATE ads SET status="rejected" WHERE id=?', (ad_id,))
-            await query.message.reply_text(f"آگهی {ad_id} رد شد.")
-        conn.commit()
-    except sqlite3.Error as e:
-        logger.error(f"Database error in handle_admin_action: {e}")
-        await query.message.reply_text("خطایی در پردازش درخواست رخ داد.")
-    finally:
-        conn.close()
+
+    data = query.data
+    if data.startswith("approve_") or data.startswith("reject_"):
+        await handle_admin_action(update, context)  # استفاده از تابع موجود
+    elif data.startswith("page_"):
+        context.user_data['admin_page'] = int(data.split("_")[1])
+        await admin_panel(update, context)
+    elif data == "change_status":
+        buttons = [
+            [InlineKeyboardButton("⏳ در انتظار", callback_data="status_pending")],
+            [InlineKeyboardButton("✅ تأیید شده", callback_data="status_approved")],
+            [InlineKeyboardButton("❌ رد شده", callback_data="status_rejected")],
+            [InlineKeyboardButton("🏠 بازگشت", callback_data="admin_exit")]
+        ]
+        await query.message.reply_text(
+            "📊 وضعیت مورد نظر را انتخاب کنید:",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+    elif data.startswith("status_"):
+        context.user_data['admin_status_filter'] = data.split("_")[1]
+        context.user_data['admin_page'] = 1  # بازنشانی صفحه
+        await admin_panel(update, context)
+    elif data.startswith("show_photos_"):
+        ad_id = data.split("_")[2]
+        conn = get_db_connection()
+        try:
+            ad = conn.execute('SELECT photos FROM ads WHERE id = ?', (ad_id,)).fetchone()
+            if ad and ad['photos']:
+                for photo in ad['photos'].split(","):
+                    await context.bot.send_photo(
+                        chat_id=update.effective_chat.id,
+                        photo=photo,
+                        caption=f"تصویر آگهی {ad_id}"
+                    )
+                    await asyncio.sleep(0.5)
+            else:
+                await query.message.reply_text("📸 این آگهی تصویری ندارد.")
+        except Exception as e:
+            logger.error(f"Error in show_photos: {e}")
+            await query.message.reply_text("❌ خطایی در نمایش تصاویر رخ داد.")
+        finally:
+            conn.close()
+    elif data == "admin_exit":
+        await query.message.reply_text("🏠 بازگشت به منوی اصلی.")
+        await start(update, context)
 
 async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     one_year_ago = datetime.now() - timedelta(days=365)
@@ -421,12 +530,13 @@ def main():
 
         application.add_handler(CommandHandler("start", start))
         application.add_handler(conv_handler)
-        application.add_handler(CallbackQueryHandler(handle_admin_action, pattern="^(approve|reject)_"))
+        application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve|reject|page|status|show_photos|change_status|admin_exit)_"))
         application.add_handler(CommandHandler("stats", stats))
         application.add_handler(CallbackQueryHandler(stats, pattern="stats"))
         application.add_handler(CommandHandler("show_ads", show_ads))
         application.add_handler(CallbackQueryHandler(show_ads, pattern="show_ads"))
         application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="check_membership"))
+        application.add_handler(CommandHandler("admin", admin_panel))  #
         application.add_error_handler(error_handler)
 
         logger.info("Bot is running...")
