@@ -105,7 +105,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
      ##   return ConversationHandler.END
 
      # user_id = update.effective_user.id
-      conn = get_db_connection()
+     # conn = get_db_connection()
     try:
         c = conn.cursor()
         user_data = c.execute('SELECT phone FROM users WHERE user_id = ?', (user_id,)).fetchone()
