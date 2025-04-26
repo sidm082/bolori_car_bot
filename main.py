@@ -30,8 +30,8 @@ if not ADMIN_ID:
     raise ValueError("No valid ADMIN_IDS provided")
 
 # تنظیمات اولیه
-CHANNEL_URL = "https://t.me/bolori_car"
-CHANNEL_ID = "@bolori_car"
+CHANNEL_URL = "https://t.me/boloricar0"
+CHANNEL_ID = "@boloricar0"
 
 # اتصال به دیتابیس
 def get_db_connection():
