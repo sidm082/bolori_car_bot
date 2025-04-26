@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # بارگذاری متغیرهای محیطی
 load_dotenv()
-TOKEN = "8061166709:AAHIbdxBrEdE1aEdO3cHEUV_Y84Cqjs6npU"
+TOKEN = os.getenv("TOKEN")
 if not TOKEN:
     logger.error("BOT_TOKEN is not set in environment variables")
     raise ValueError("BOT_TOKEN is not set in environment variables")
