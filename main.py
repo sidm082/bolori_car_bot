@@ -434,6 +434,13 @@ def main():
     except Exception as e:
         logger.error(f"Error in main: {e}")
         raise
-
+    # ... افزودن handlerها ...
+    await application.bot.set_webhook(url="https://your-render-url.com/webhook")
+    await application.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.getenv("PORT", 8000)),
+        url_path="/webhook",
+        webhook_url="https://your-render-url.com/webhook"
+    )
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
