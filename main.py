@@ -96,16 +96,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("خطایی در ثبت اطلاعات رخ داد.")
         finally:
             conn.close()
-    else:
-        await update.message.reply_text("⚠️ لطفا ابتدا در کانال ما عضو شوید:\n" + CHANNEL_URL)
+  #  else:
+ #       await update.message.reply_text("⚠️ لطفا ابتدا در کانال ما عضو شوید:\n" + CHANNEL_URL)
 
-async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_membership(update, context):
-        await update.message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
-        return ConversationHandler.END
+#async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+  #  if not await check_membership(update, context):
+    #    await update.message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
+     ##   return ConversationHandler.END
 
-    user_id = update.effective_user.id
-    conn = get_db_connection()
+     user_id = update.effective_user.id
+      conn = get_db_connection()
     try:
         c = conn.cursor()
         user_data = c.execute('SELECT phone FROM users WHERE user_id = ?', (user_id,)).fetchone()
