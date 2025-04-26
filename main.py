@@ -8,26 +8,60 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from dotenv import load_dotenv
 
 # تنظیم لاگ‌گیری
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
 logger = logging.getLogger(__name__)
 
 # بارگذاری متغیرهای محیطی
 load_dotenv()
-TOKEN = os.getenv("TOKEN")
-if not TOKEN:
-    logger.error("BOT_TOKEN is not set in environment variables")
-    raise ValueError("BOT_TOKEN is not set in environment variables")
 
-# بررسی دقیق توکن
-if not TOKEN.isascii() or any(c.isspace() for c in TOKEN) or len(TOKEN) < 30:
-    logger.error("BOT_TOKEN contains invalid characters, whitespace, or is too short")
-    raise ValueError("BOT_TOKEN contains invalid characters, whitespace, or is too short")
+# خواندن توکن به‌صورت امن
+def load_bot_token():
+    token = os.getenv("BOT_TOKEN")
+    if not token:
+        logger.error("BOT_TOKEN is not set in environment variables")
+        raise ValueError("BOT_TOKEN is not set in environment variables")
+    
+    # بررسی طول توکن
+    token_length = len(token)
+    if token_length < 30:
+        logger.error("BOT_TOKEN is too short (length: %d)", token_length)
+        raise ValueError("BOT_TOKEN is too short")
+    
+    # بررسی کاراکترهای غیرمجاز
+    if not token.isascii():
+        logger.error("BOT_TOKEN contains non-ASCII characters")
+        raise ValueError("BOT_TOKEN contains non-ASCII characters")
+    
+    # بررسی فاصله
+    if any(c.isspace() for c in token):
+        logger.error("BOT_TOKEN contains whitespace")
+        raise ValueError("BOT_TOKEN contains whitespace")
+    
+    return token
 
-ADMIN_IDS = os.getenv("ADMIN_IDS", "5677216420")
-ADMIN_ID = [int(id) for id in ADMIN_IDS.split(",") if id.strip().isdigit()]
-if not ADMIN_ID:
-    logger.error("No valid ADMIN_IDS provided")
-    raise ValueError("No valid ADMIN_IDS provided")
+# خواندن ADMIN_IDS به‌صورت امن
+def load_admin_ids():
+    admin_ids = os.getenv("ADMIN_IDS", "")
+    if not admin_ids:
+        logger.error("No ADMIN_IDS provided")
+        raise ValueError("No ADMIN_IDS provided")
+    
+    try:
+        return [int(id) for id in admin_ids.split(",") if id.strip().isdigit()]
+    except ValueError as e:
+        logger.error("Invalid ADMIN_IDS format")
+        raise ValueError("Invalid ADMIN_IDS format") from e
+
+try:
+    TOKEN = load_bot_token()
+    ADMIN_ID = load_admin_ids()
+except ValueError as e:
+    logger.critical("Failed to initialize bot: %s", e)
+    exit(1)
 
 # تنظیمات اولیه
 CHANNEL_URL = "https://t.me/boloricar0"
