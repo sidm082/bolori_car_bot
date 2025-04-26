@@ -60,15 +60,15 @@ conn.close()
 # مراحل ConversationHandler
 AD_TITLE, AD_DESCRIPTION, AD_PRICE, AD_PHOTOS, AD_PHONE, AD_CAR_MODEL = range(1, 7)
 
-async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    try:
-        member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        return member.status in ['member', 'administrator', 'creator']
-    except Exception as e:
-        logger.error(f"Membership check failed for user {user_id}: {e}")
-        await update.message.reply_text("خطایی در بررسی عضویت رخ داد. لطفاً دوباره تلاش کنید.")
-        return False
+#async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
+   # user_id = update.effective_user.id
+   # try:
+     #   member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+    #    return member.status in ['member', 'administrator', 'creator']
+   # except Exception as e:
+      #  logger.error(f"Membership check failed for user {user_id}: {e}")
+      #  await update.message.reply_text("خطایی در بررسی عضویت رخ داد. لطفاً دوباره تلاش کنید.")
+      #  return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await check_membership(update, context):
