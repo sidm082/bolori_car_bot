@@ -306,14 +306,14 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ads = c.execute('SELECT * FROM ads WHERE status="pending"').fetchall()
         if not ads:
             await update.effective_message.reply_text("هیچ آگهی در انتظار تأیید نیست.")
-            return
+        return
         for ad in ads:
             user_info = c.execute('SELECT phone FROM users WHERE user_id = ?', (ad['user_id'],)).fetchone()
             phone = user_info['phone'] if user_info else "نامشخص"
             user = await context.bot.get_chat(ad['user_id'])
             username = user.username or f"{user.first_name} {user.last_name or ''}"
             ad_text = f"🆔 آگهی: {ad['id']}\n👤 کاربر: {username}\n📞 شماره: {phone}\n📌 عنوان: {ad['title']}"
-            buttons = [[InlineKeyboardButton("تایید", callback_data=f"approve_{ad['id']}"),
+            buttons = [[InlineKeyboardButton("تأیید", callback_data=f"approve_{ad['id']}"),
                         InlineKeyboardButton("رد", callback_data=f"reject_{ad['id']}")]]
             await update.effective_message.reply_text(ad_text, reply_markup=InlineKeyboardMarkup(buttons))
             await asyncio.sleep(0.5)
@@ -396,7 +396,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.warning(f'Update "{update}" caused error "{context.error}"')
 
-def main():
+async def main():
     try:
         logger.info(f"Starting bot with token: {TOKEN[:10]}...")
         application = Application.builder().token(TOKEN).build()
@@ -416,7 +416,7 @@ def main():
                 AD_PHONE: [MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), receive_phone)],
             },
             fallbacks=[CommandHandler("cancel", cancel)],
-            per_message=True
+            per_message=False
         )
 
         application.add_handler(CommandHandler("start", start))
@@ -427,20 +427,21 @@ def main():
         application.add_handler(CommandHandler("show_ads", show_ads))
         application.add_handler(CallbackQueryHandler(show_ads, pattern="show_ads"))
         application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="check_membership"))
-        application.add_error_handler(error_handler)
+        application.add_handler(error_handler)
 
-        logger.info("Bot is running...")
-        application.run_polling(allowed_updates=["message", "callback_query"])
+        # تنظیم Webhook
+        webhook_url = os.getenv("WEBHOOK_URL", "https://your-render-url.com/webhook")
+        await application.bot.set_webhook(url=webhook_url)
+        logger.info("Webhook set. Starting webhook server...")
+        await application.run_webhook(
+            listen="0.0.0.0",
+            port=int(os.getenv("PORT", 8000)),
+            url_path="/webhook",
+            webhook_url=webhook_url
+        )
     except Exception as e:
         logger.error(f"Error in main: {e}")
         raise
-    # ... افزودن handlerها ...
-    await application.bot.set_webhook(url="https://your-render-url.com/webhook")
-    await application.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.getenv("PORT", 8000)),
-        url_path="/webhook",
-        webhook_url="https://your-render-url.com/webhook"
-    )
+
 if __name__ == "__main__":
     asyncio.run(main())
