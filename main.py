@@ -69,7 +69,7 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Membership check failed for user {user_id}: {e}")
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ عضویت در کانال", url=f"https://t.me/{CHANNEL_USERNAME}")],
+            [InlineKeyboardButton("✅ عضویت در کانال", url=CHANNEL_URL)],
             [InlineKeyboardButton("🔄 بررسی عضویت", callback_data="check_membership")]
         ])
         await update.effective_message.reply_text(
@@ -370,6 +370,9 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text("❌ عملیات لغو شد.")
     return ConversationHandler.END
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logger.warning(f'Update "{update}" caused error "{context.error}"')
+
 def main():
     try:
         logger.info(f"Starting bot with token: {TOKEN[:10]}...")
@@ -402,6 +405,7 @@ def main():
         application.add_handler(CommandHandler("show_ads", show_ads))
         application.add_handler(CallbackQueryHandler(show_ads, pattern="show_ads"))
         application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="check_membership"))
+        application.add_error_handler(error_handler)
 
         logger.info("Bot is running...")
         application.run_polling()
