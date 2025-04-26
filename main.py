@@ -135,30 +135,6 @@ async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_membership(update, context):
         await message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
         return ConversationHandler.END
-    user_id = update.effective_user.id
-    conn = get_db_connection()
-    try:
-        with conn:
-            user_data = conn.execute('SELECT phone FROM users WHERE user_id = ?', (user_id,)).fetchone()
-        if not user_data or not user_data[0]:
-            # ایجاد کیبورد برای درخواست شماره
-            keyboard = ReplyKeyboardMarkup(
-                [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
-                resize_keyboard=True,
-                one_time_keyboard=True
-            )
-            await message.reply_text(
-                "📞 لطفاً شماره تلفن خود را با زدن دکمه زیر ارسال کنید:",
-                reply_markup=keyboard
-            )
-            context.user_data['after_phone'] = AD_TITLE
-            return AD_PHONE
-    except sqlite3.Error as e:
-        logger.error(f"Database error in post_ad: {e}")
-        await message.reply_text("❌ خطایی در بررسی اطلاعات رخ داد. لطفاً بعداً دوباره تلاش کنید.")
-        return ConversationHandler.END
-    finally:
-        conn.close()
     if 'ad' not in context.user_data:
         context.user_data['ad'] = {'photos': []}
     await message.reply_text("📝 لطفاً عنوان آگهی خود را وارد کنید:")
@@ -171,7 +147,7 @@ async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AD_TITLE
     context.user_data['ad']['title'] = title
     await update.effective_message.reply_text("لطفا توضیحات آگهی را وارد کنید:")
-
+    return AD_DESCRIPTION
 
 async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
     description = update.message.text.strip()
@@ -195,42 +171,39 @@ async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ad = context.user_data['ad']
     if update.message.text and update.message.text.lower() == "هیچ":
         ad['photos'] = []
-        return await save_ad(update, context)
+        return await request_phone(update, context)
     elif update.message.photo:
         ad['photos'].append(update.message.photo[-1].file_id)
         await update.effective_message.reply_text("عکس دریافت شد. برای ارسال عکس دیگر، عکس بفرستید یا بنویسید 'تمام' برای اتمام.")
         return AD_PHOTOS
     elif update.message.text and update.message.text.lower() == "تمام" and ad['photos']:
-        return await save_ad(update, context)
+        return await request_phone(update, context)
     else:
         await update.effective_message.reply_text("لطفا یک عکس ارسال کنید یا بنویسید 'هیچ' یا 'تمام'.")
         return AD_PHOTOS
 
-async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    ad = context.user_data['ad']
+async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    created_at = datetime.now().isoformat()
-    photos = ",".join(ad['photos']) if ad['photos'] else ""
     conn = get_db_connection()
     try:
-        c = conn.cursor()
-        c.execute('INSERT INTO ads (user_id, title, description, price, photos, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-                  (user_id, ad['title'], ad['description'], ad['price'], photos, created_at))
-        conn.commit()
-        ad_id = c.lastrowid
-        await update.effective_message.reply_text("✅ آگهی با موفقیت ثبت شد و در انتظار تایید مدیر است.")
-        for admin_id in ADMIN_ID:
-            try:
-                await context.bot.send_message(
-                    chat_id=admin_id,
-                    text=f"آگهی جدید ثبت شد:\nعنوان:{ad['title']}\nID: {ad_id}\nلطفاً در پنل ادمین بررسی کنید."
-                )
-            except Exception as e:
-                logger.error(f"Failed to notify admin {admin_id}: {e}")
-        return ConversationHandler.END
+        with conn:
+            user_data = conn.execute('SELECT phone FROM users WHERE user_id = ?', (user_id,)).fetchone()
+        if not user_data or not user_data[0]:
+            keyboard = ReplyKeyboardMarkup(
+                [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
+                resize_keyboard=True,
+                one_time_keyboard=True
+            )
+            await update.effective_message.reply_text(
+                "📞 لطفاً شماره تلفن خود را برای ثبت آگهی با زدن دکمه زیر ارسال کنید:",
+                reply_markup=keyboard
+            )
+            return AD_PHONE
+        else:
+            return await save_ad(update, context)
     except sqlite3.Error as e:
-        logger.error(f"Database error in save_ad: {e}")
-        await update.effective_message.reply_text("خطایی در ثبت آگهی رخ داد. لطفاً دوباره تلاش کنید.")
+        logger.error(f"Database error in request_phone: {e}")
+        await update.effective_message.reply_text("❌ خطایی در بررسی اطلاعات رخ داد. لطفاً بعداً دوباره تلاش کنید.")
         return ConversationHandler.END
     finally:
         conn.close()
@@ -266,10 +239,10 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         # حذف کیبورد موقت
         await update.effective_message.reply_text(
-            "✅ شماره تلفن با موفقیت ثبت شد.",
+            "✅ شماره تلفن با موفقیت ثبت شد. آگهی شما در حال ارسال برای تأیید است...",
             reply_markup=ReplyKeyboardRemove()
         )
-        return context.user_data.pop('after_phone', ConversationHandler.END)
+        return await save_ad(update, context)
     except sqlite3.Error as e:
         logger.error(f"Database error in receive_phone: {e}")
         await update.effective_message.reply_text(
@@ -280,11 +253,38 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         conn.close()
 
+async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    ad = context.user_data['ad']
+    user_id = update.effective_user.id
+    created_at = datetime.now().isoformat()
+    photos = ",".join(ad['photos']) if ad['photos'] else ""
+    conn = get_db_connection()
+    try:
+        c = conn.cursor()
+        c.execute('INSERT INTO ads (user_id, title, description, price, photos, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+                  (user_id, ad['title'], ad['description'], ad['price'], photos, created_at))
+        conn.commit()
+        ad_id = c.lastrowid
+        await update.effective_message.reply_text("✅ آگهی با موفقیت ثبت شد و در انتظار تأیید مدیر است.")
+        for admin_id in ADMIN_ID:
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=f"آگهی جدید ثبت شد:\nعنوان: {ad['title']}\nID: {ad_id}\nلطفاً در پنل ادمین بررسی کنید."
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify admin {admin_id}: {e}")
+        return ConversationHandler.END
+    except sqlite3.Error as e:
+        logger.error(f"Database error in save_ad: {e}")
+        await update.effective_message.reply_text("خطایی در ثبت آگهی رخ داد. لطفاً دوباره تلاش کنید.")
+        return ConversationHandler.END
+    finally:
+        conn.close()
+
 async def start_edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_membership(update, context):
         return ConversationHandler.END
-    context.user_data['after_phone'] = ConversationHandler.END
-    # ایجاد کیبورد برای درخواست شماره
     keyboard = ReplyKeyboardMarkup(
         [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
         resize_keyboard=True,
@@ -305,7 +305,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         c = conn.cursor()
         ads = c.execute('SELECT * FROM ads WHERE status="pending"').fetchall()
         if not ads:
-            await update.effective_message.reply_text("هیچ آگهی در انتظار تایید نیست.")
+            await update.effective_message.reply_text("هیچ آگهی در انتظار تأیید نیست.")
             return
         for ad in ads:
             user_info = c.execute('SELECT phone FROM users WHERE user_id = ?', (ad['user_id'],)).fetchone()
@@ -335,7 +335,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         c = conn.cursor()
         if action == "approve":
             c.execute('UPDATE ads SET status="approved" WHERE id=?', (ad_id,))
-            await query.message.reply_text(f"آگهی {ad_id} تایید شد.")
+            await query.message.reply_text(f"آگهی {ad_id} تأیید شد.")
         elif action == "reject":
             c.execute('UPDATE ads SET status="rejected" WHERE id=?', (ad_id,))
             await query.message.reply_text(f"آگهی {ad_id} رد شد.")
@@ -353,7 +353,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         c = conn.cursor()
         ads = c.execute("SELECT * FROM ads WHERE status='approved' AND datetime(created_at) >= ?", (one_year_ago.isoformat(),)).fetchall()
         if not ads:
-            await update.effective_message.reply_text("هیچ آگهی تایید شده‌ای وجود ندارد.")
+            await update.effective_message.reply_text("هیچ آگهی تأیید شده‌ای وجود ندارد.")
             return
         for ad in ads:
             text = f"📌 عنوان: {ad['title']}\n💬 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}"
@@ -390,7 +390,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.effective_message.reply_text("❌ عملیات لغو شد.")
+    await update.effective_message.reply_text("❌ عملیات لغو شد.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -416,7 +416,7 @@ def main():
                 AD_PHONE: [MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), receive_phone)],
             },
             fallbacks=[CommandHandler("cancel", cancel)],
-            per_message=False
+            per_message=True
         )
 
         application.add_handler(CommandHandler("start", start))
@@ -430,7 +430,7 @@ def main():
         application.add_error_handler(error_handler)
 
         logger.info("Bot is running...")
-        application.run_polling()
+        application.run_polling(allowed_updates=["message", "callback_query"])
     except Exception as e:
         logger.error(f"Error in main: {e}")
         raise
