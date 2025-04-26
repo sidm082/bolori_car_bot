@@ -71,7 +71,7 @@ AD_TITLE, AD_DESCRIPTION, AD_PRICE, AD_PHOTOS, AD_PHONE, AD_CAR_MODEL = range(1,
       #  return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if await check_membership(update, context):
+  #  if await check_membership(update, context):
         buttons = [
             [InlineKeyboardButton("ثبت آگهی (/post_ad)", callback_data="post_ad")],
             [InlineKeyboardButton("ویرایش اطلاعات (/edit_info)", callback_data="edit_info")],
