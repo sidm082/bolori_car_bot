@@ -4,7 +4,7 @@ import logging
 import asyncio
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler,filter, CallbackQueryHandler, ConversationHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler,filters, CallbackQueryHandler, ConversationHandler, ContextTypes
 from dotenv import load_dotenv
 
 # تنظیم لاگ‌گیری
