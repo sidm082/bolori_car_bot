@@ -306,7 +306,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ads = c.execute('SELECT * FROM ads WHERE status="pending"').fetchall()
         if not ads:
             await update.effective_message.reply_text("هیچ آگهی در انتظار تأیید نیست.")
-        return
+            return
         for ad in ads:
             user_info = c.execute('SELECT phone FROM users WHERE user_id = ?', (ad['user_id'],)).fetchone()
             phone = user_info['phone'] if user_info else "نامشخص"
@@ -396,7 +396,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.warning(f'Update "{update}" caused error "{context.error}"')
 
-async def main():
+def main():
     try:
         logger.info(f"Starting bot with token: {TOKEN[:10]}...")
         application = Application.builder().token(TOKEN).build()
@@ -427,21 +427,13 @@ async def main():
         application.add_handler(CommandHandler("show_ads", show_ads))
         application.add_handler(CallbackQueryHandler(show_ads, pattern="show_ads"))
         application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="check_membership"))
-        application.add_handler(error_handler)
+        application.add_error_handler(error_handler)
 
-        # تنظیم Webhook
-        webhook_url = os.getenv("WEBHOOK_URL", "https://your-render-url.com/webhook")
-        await application.bot.set_webhook(url=webhook_url)
-        logger.info("Webhook set. Starting webhook server...")
-        await application.run_webhook(
-            listen="0.0.0.0",
-            port=int(os.getenv("PORT", 8000)),
-            url_path="/webhook",
-            webhook_url=webhook_url
-        )
+        logger.info("Bot is running...")
+        application.run_polling(allowed_updates=["message", "callback_query"], drop_pending_updates=True)
     except Exception as e:
         logger.error(f"Error in main: {e}")
         raise
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
