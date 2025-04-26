@@ -403,6 +403,29 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         conn.close()
 
+async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if update.effective_user.id not in ADMIN_ID:
+        await query.message.reply_text("❌ دسترسی ممنوع!")
+        return
+    action, ad_id = query.data.split("_")
+    conn = get_db_connection()
+    try:
+        c = conn.cursor()
+        if action == "approve":
+            c.execute('UPDATE ads SET status="approved" WHERE id=?', (ad_id,))
+            await query.message.reply_text(f"آگهی {ad_id} تأیید شد.")
+        elif action == "reject":
+            c.execute('UPDATE ads SET status="rejected" WHERE id=?', (ad_id,))
+            await query.message.reply_text(f"آگهی {ad_id} رد شد.")
+        conn.commit()
+    except sqlite3.Error as e:
+        logger.error(f"Database error in handle_admin_action: {e}")
+        await query.message.reply_text("خطایی در پردازش درخواست رخ داد.")
+    finally:
+        conn.close()
+
 async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -412,7 +435,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     data = query.data
     if data.startswith("approve_") or data.startswith("reject_"):
-        await handle_admin_action(update, context)  # استفاده از تابع موجود
+        await handle_admin_action(update, context)  # فراخوانی تابع موجود
     elif data.startswith("page_"):
         context.user_data['admin_page'] = int(data.split("_")[1])
         await admin_panel(update, context)
@@ -527,7 +550,6 @@ def main():
             fallbacks=[CommandHandler("cancel", cancel)],
             per_message=False
         )
-
         application.add_handler(CommandHandler("start", start))
         application.add_handler(conv_handler)
         application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve|reject|page|status|show_photos|change_status|admin_exit)_"))
@@ -536,7 +558,7 @@ def main():
         application.add_handler(CommandHandler("show_ads", show_ads))
         application.add_handler(CallbackQueryHandler(show_ads, pattern="show_ads"))
         application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="check_membership"))
-        application.add_handler(CommandHandler("admin", admin_panel))  #
+        application.add_handler(CommandHandler("admin", admin_panel))  # دستور برای پنل ادمین
         application.add_error_handler(error_handler)
 
         logger.info("Bot is running...")
