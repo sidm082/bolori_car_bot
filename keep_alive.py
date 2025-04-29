@@ -1,15 +1,16 @@
-from flask import Flask
-from threading import Thread
+import asyncio
+from telegram import Bot
 
-app = Flask('')
+async def keep_alive():
+    bot = Bot(token="8061166709:AAHIbdxBrEdE1aEdO3cHEUV_Y84Cqjs6npU")
+    while True:
+        await asyncio.sleep(300)  # هر 5 دقیقه
+        await bot.get_me()  # یک درخواست ساده برای فعال نگه داشتن
 
-@app.route('/')
-def home():
-    return "I'm alive!"
-
-def run():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
+# در تابع اصلی
+if __name__ == "__main__":
+    from concurrent.futures import ThreadPoolExecutor
+    executor = ThreadPoolExecutor()
+    executor.submit(asyncio.run, keep_alive())
+    
+    application.run_polling()
