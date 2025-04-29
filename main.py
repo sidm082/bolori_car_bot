@@ -6,7 +6,20 @@ from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ConversationHandler, ContextTypes
 from dotenv import load_dotenv
+from telegram.ext import ApplicationBuilder
 
+application = ApplicationBuilder() \
+    .token os.getenv("BOT_TOKEN") \
+    .post_init(post_init) \
+    .post_stop(post_stop) \
+    .build()
+
+async def post_init(application):
+    print("ربات با موفقیت راه‌اندازی شد!")
+    
+async def post_stop(application):
+    print("ربات در حال توقف...")
+    # میتوانید اینجا پیام به ادمین ارسال کنید
 # تنظیم لاگ‌گیری
 logging.basicConfig(
     level=logging.INFO,
