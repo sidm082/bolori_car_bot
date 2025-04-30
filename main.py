@@ -151,6 +151,44 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             conn.close()
 
+async def start_edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مدیریت ویرایش اطلاعات کاربر (مثل شماره تلفن)"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+        message = query.message
+    else:
+        message = update.effective_message
+    
+    if not await check_membership(update, context):
+        await message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
+        return ConversationHandler.END
+    
+    user_id = update.effective_user.id
+    conn = get_db_connection()
+    try:
+        user_data = conn.execute('SELECT phone FROM users WHERE user_id = ?', (user_id,)).fetchone()
+        current_phone = user_data['phone'] if user_data and user_data['phone'] else "ثبت نشده"
+        
+        keyboard = ReplyKeyboardMarkup(
+            [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        
+        await message.reply_text(
+            f"📞 شماره تلفن فعلی شما: {current_phone}\n"
+            "لطفاً شماره تلفن جدید را با زدن دکمه زیر یا تایپ دستی ارسال کنید:",
+            reply_markup=keyboard
+        )
+        return AD_PHONE  # استفاده از همان حالت AD_PHONE برای دریافت شماره
+    except sqlite3.Error as e:
+        logger.error(f"Database error in start_edit_info: {e}")
+        await message.reply_text("❌ خطایی در بررسی اطلاعات رخ داد.")
+        return ConversationHandler.END
+    finally:
+        conn.close()
+
 async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if query:
@@ -281,12 +319,20 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (user_id, phone)
             )
         
-        context.user_data['ad']['phone'] = phone
-        await update.effective_message.reply_text(
-            "✅ شماره تلفن با موفقیت ثبت شد. آگهی شما در حال ارسال برای تأیید است...",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        return await save_ad(update, context)
+        # بررسی اینکه آیا این تماس برای ویرایش اطلاعات است یا ثبت آگهی
+        if 'ad' in context.user_data and context.user_data['ad']:
+            context.user_data['ad']['phone'] = phone
+            await update.effective_message.reply_text(
+                "✅ شماره تلفن با موفقیت ثبت شد. آگهی شما در حال ارسال برای تأیید است...",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return await save_ad(update, context)
+        else:
+            await update.effective_message.reply_text(
+                "✅ شماره تلفن با موفقیت به‌روزرسانی شد.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return ConversationHandler.END
     except sqlite3.Error as e:
         logger.error(f"Database error in receive_phone: {e}")
         await update.effective_message.reply_text(
@@ -807,7 +853,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # --- تنظیمات اصلی ربات ---
-def main():
+async def main():
     # مقداردهی اولیه دیتابیس
     init_db()
     global ADMIN_ID
@@ -815,6 +861,10 @@ def main():
     
     # ساخت اپلیکیشن ربات
     application = Application.builder().token(TOKEN).build()
+    
+    # غیرفعال کردن webhook و حذف به‌روزرسانی‌های در انتظار
+    await application.bot.delete_webhook(drop_pending_updates=True)
+    logger.info("✅ Webhook غیرفعال شد")
     
     # تنظیم هندلرهای گفتگو
     conv_handler = ConversationHandler(
@@ -853,11 +903,12 @@ def main():
     application.add_error_handler(error_handler)
     
     # اجرای ربات
-    logger.info("Starting bot...")
-    application.run_polling(
+    logger.info("🚀 Starting bot...")
+    await application.run_polling(
         allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True
+        drop_pending_updates=True,
+        timeout=10
     )
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
