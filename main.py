@@ -60,9 +60,9 @@ except ValueError as e:
     exit(1)
 
 # تنظیمات اولیه
-CHANNEL_URL = "https://t.me/boloricar0"
-CHANNEL_ID = "@boloricar0"
-CHANNEL_USERNAME = "boloricar0"
+CHANNEL_URL = "https://t.me/bolori_car"
+CHANNEL_ID = "@bolori_car"
+CHANNEL_USERNAME = "bolori_car"
 
 # اتصال به دیتابیس
 def get_db_connection():
