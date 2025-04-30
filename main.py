@@ -4,112 +4,90 @@ import logging
 import asyncio
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ConversationHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    CallbackQueryHandler,
+    ConversationHandler,
+    ContextTypes
+)
 from dotenv import load_dotenv
-from telegram.ext import ApplicationBuilder
 
-# تنظیم لاگ‌گیری
+# تنظیمات لاگ‌گیری
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
 # بارگذاری متغیرهای محیطی
 load_dotenv()
 
-# خواندن توکن به‌صورت امن
-def load_bot_token():
-    token = os.getenv("BOT_TOKEN")
-    if not token:
-        logger.error("BOT_TOKEN is not set and .env file not found. Check environment variables.")
-        raise ValueError("BOT_TOKEN is not set in environment variables")
-    
-    token_length = len(token)
-    if token_length < 30:
-        logger.error("BOT_TOKEN is too short (length: %d)", token_length)
-        raise ValueError("BOT_TOKEN is too short")
-    
-    if not token.isascii():
-        logger.error("BOT_TOKEN contains non-ASCII characters")
-        raise ValueError("BOT_TOKEN contains non-ASCII characters")
-    
-    if any(c.isspace() for c in token):
-        logger.error("BOT_TOKEN contains whitespace")
-        raise ValueError("BOT_TOKEN contains whitespace")
-    
-    return token
+# خواندن توکن از محیط
+TOKEN = os.getenv('BOT_TOKEN')
+if not TOKEN:
+    raise ValueError("لطفا توکن ربات را در فایل .env تنظیم کنید")
 
-async def post_init(application):
-    print("ربات با موفقیت راه‌اندازی شد!")
-    
-async def post_stop(application):
-    print("ربات در حال توقف...")
-    # میتوانید اینجا پیام به ادمین ارسال کنید
-
-try:
-    TOKEN = load_bot_token()
-except ValueError as e:
-    logger.critical("Failed to initialize bot: %s", e)
-    exit(1)
-
-# تنظیمات اولیه
+# تنظیمات کانال
 CHANNEL_URL = "https://t.me/bolori_car"
 CHANNEL_ID = "@bolori_car"
 CHANNEL_USERNAME = "bolori_car"
 
-# اتصال به دیتابیس
+# مراحل گفتگو
+AD_TITLE, AD_DESCRIPTION, AD_PRICE, AD_PHOTOS, AD_PHONE = range(5)
+
+# --- توابع دیتابیس ---
 def get_db_connection():
     conn = sqlite3.connect('bot.db', check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
-# ایجاد جداول دیتابیس
-conn = get_db_connection()
-c = conn.cursor()
-c.execute('''CREATE TABLE IF NOT EXISTS users
-             (user_id INTEGER PRIMARY KEY, joined INTEGER DEFAULT 0, phone TEXT)''')
-c.execute('''CREATE TABLE IF NOT EXISTS ads
-             (id INTEGER PRIMARY KEY AUTOINCREMENT,
-              user_id INTEGER,
-              title TEXT,
-              description TEXT,
-              price TEXT,
-              photos TEXT,
-              status TEXT DEFAULT 'pending',
-              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-              FOREIGN KEY(user_id) REFERENCES users(user_id))''')
-c.execute('''CREATE TABLE IF NOT EXISTS admins
-             (user_id INTEGER PRIMARY KEY)''')
-# افزودن ادمین اولیه (اختیاری، برای شروع)
-initial_admin_id = 5677216420  # جایگزین با ID ادمین اولیه
-c.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (initial_admin_id,))
-conn.commit()
-conn.close()
+def init_db():
+    conn = get_db_connection()
+    try:
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS users
+                    (user_id INTEGER PRIMARY KEY, 
+                     joined INTEGER DEFAULT 0, 
+                     phone TEXT)''')
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS ads
+                    (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     user_id INTEGER,
+                     title TEXT,
+                     description TEXT,
+                     price TEXT,
+                     photos TEXT,
+                     status TEXT DEFAULT 'pending',
+                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                     FOREIGN KEY(user_id) REFERENCES users(user_id))''')
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS admins
+                    (user_id INTEGER PRIMARY KEY)''')
+        
+        # ادمین پیش‌فرض
+        initial_admin_id = 5677216420
+        c.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (initial_admin_id,))
+        conn.commit()
+    finally:
+        conn.close()
 
-# بارگذاری لیست ادمین‌ها از دیتابیس
 def load_admin_ids():
     conn = get_db_connection()
     try:
         c = conn.cursor()
         admins = c.execute('SELECT user_id FROM admins').fetchall()
         return [admin['user_id'] for admin in admins]
-    except sqlite3.Error as e:
-        logger.error(f"Database error in load_admin_ids: {e}")
-        return []
     finally:
         conn.close()
 
-ADMIN_ID = load_admin_ids()
-
-# مراحل ConversationHandler
-AD_TITLE, AD_DESCRIPTION, AD_PRICE, AD_PHOTOS, AD_PHONE = range(1, 6)
-
+# --- توابع اصلی ربات ---
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     try:
-        member = await context.bot.get_chat_member(chat_id=f"@{CHANNEL_USERNAME}", user_id=user_id)
+        member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
         return member.status in ['member', 'administrator', 'creator']
     except Exception as e:
         logger.error(f"Membership check failed for user {user_id}: {e}")
@@ -125,12 +103,13 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def check_membership_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user_id = query.from_user.id
     await query.answer()
+    user_id = query.from_user.id
     try:
-        member = await context.bot.get_chat_member(chat_id=f"@{CHANNEL_USERNAME}", user_id=user_id)
+        member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
         if member.status in ['member', 'administrator', 'creator']:
             await query.edit_message_text("✅ عضویت شما تایید شد! حالا می‌توانید ادامه دهید.")
+            await start(update, context)
         else:
             await query.answer("شما هنوز عضو نشدید!", show_alert=True)
     except Exception as e:
@@ -143,21 +122,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buttons = [
             [InlineKeyboardButton("➕ ثبت آگهی", callback_data="post_ad")],
             [InlineKeyboardButton("✏️ ویرایش اطلاعات", callback_data="edit_info")],
-            [InlineKeyboardButton("📊 آمار کاربران (ادمین)", callback_data="stats")],
-            [InlineKeyboardButton("🗂️ نمایش تمامی آگهی‌ها", callback_data="show_ads")]
+            [InlineKeyboardButton("🗂️ نمایش آگهی‌ها", callback_data="show_ads")]
         ]
+        
         if user.id in ADMIN_ID:
             buttons.append([InlineKeyboardButton("👨‍💼 پنل ادمین", callback_data="admin_panel")])
+            buttons.append([InlineKeyboardButton("📊 آمار کاربران", callback_data="stats")])
+        
         welcome_text = (
             f"سلام {user.first_name} عزیز! 👋\n\n"
             "به *اتوگالری بلوری* خوش آمدید.\n\n"
             "از دکمه‌های زیر برای ادامه استفاده کنید:"
         )
+        
         await update.effective_message.reply_text(
             welcome_text,
             reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode="Markdown"
         )
+        
         conn = get_db_connection()
         try:
             with conn:
@@ -167,23 +150,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.effective_message.reply_text("❌ خطایی در ثبت اطلاعات شما در سیستم رخ داد.")
         finally:
             conn.close()
-    else:
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ عضویت در کانال", url=CHANNEL_URL)],
-            [InlineKeyboardButton("🔄 بررسی عضویت", callback_data="check_membership")]
-        ])
-        await update.effective_message.reply_text(
-            "⚠️ برای استفاده از ربات ابتدا باید در کانال عضو شوید:\n",
-            reply_markup=keyboard
-        )
 
 async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.effective_message
+    query = update.callback_query
+    if query:
+        await query.answer()
+        message = query.message
+    else:
+        message = update.effective_message
+    
     if not await check_membership(update, context):
-        await message.reply_text(" /start ⚠️ لطفا ابتدا در کانال عضو شوید!")
+        await message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
         return ConversationHandler.END
-    if 'ad' not in context.user_data:
-        context.user_data['ad'] = {'photos': []}
+    
+    context.user_data['ad'] = {'photos': []}
     await message.reply_text("📝 لطفاً عنوان آگهی خود را وارد کنید:")
     return AD_TITLE
 
@@ -192,8 +172,9 @@ async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not title:
         await update.effective_message.reply_text("لطفاً عنوان معتبر وارد کنید.")
         return AD_TITLE
+    
     context.user_data['ad']['title'] = title
-    await update.effective_message.reply_text("لطفا مشخصات خودرو(کارکرد،بیمه،رنگ و...) را وارد کنید:")
+    await update.effective_message.reply_text("لطفا مشخصات خودرو (کارکرد، بیمه، رنگ و ...) را وارد کنید:")
     return AD_DESCRIPTION
 
 async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -201,8 +182,9 @@ async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_T
     if not description:
         await update.effective_message.reply_text("لطفاً توضیحات معتبر وارد کنید.")
         return AD_DESCRIPTION
+    
     context.user_data['ad']['description'] = description
-    await update.effective_message.reply_text("لطفا قیمت خودرو خود را وارد کنید:")
+    await update.effective_message.reply_text("لطفا قیمت خودرو را به تومان وارد کنید:")
     return AD_PRICE
 
 async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -210,47 +192,60 @@ async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not price.replace(",", "").isdigit():
         await update.effective_message.reply_text("لطفاً قیمت را به صورت عددی و به تومان وارد کنید.")
         return AD_PRICE
+    
     context.user_data['ad']['price'] = price
-    await update.effective_message.reply_text("لطفا عکس خودرو خود را ارسال کنید:")
+    await update.effective_message.reply_text(
+        "لطفا عکس خودرو را ارسال کنید (یا 'تمام' برای اتمام یا 'هیچ' اگر عکسی ندارید):"
+    )
     return AD_PHOTOS
 
 async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ad = context.user_data['ad']
+    
     if update.message.text and update.message.text.lower() == "هیچ":
         ad['photos'] = []
         return await request_phone(update, context)
     elif update.message.photo:
         ad['photos'].append(update.message.photo[-1].file_id)
-        await update.effective_message.reply_text("عکس دریافت شد. برای ارسال عکس دیگر، عکس بفرستید یا بنویسید 'تمام' برای اتمام.")
+        await update.effective_message.reply_text(
+            "عکس دریافت شد. برای ارسال عکس دیگر، عکس بفرستید یا 'تمام' را ارسال کنید."
+        )
         return AD_PHOTOS
-    elif update.message.text and update.message.text.lower() == "تمام" and ad['photos']:
+    elif update.message.text and update.message.text.lower() == "تمام":
+        if not ad['photos']:
+            await update.effective_message.reply_text("لطفاً حداقل یک عکس ارسال کنید یا 'هیچ' را بفرستید.")
+            return AD_PHOTOS
         return await request_phone(update, context)
     else:
-        await update.effective_message.reply_text("لطفا یک عکس ارسال کنید یا بنویسید 'هیچ' یا 'تمام'.")
+        await update.effective_message.reply_text(
+            "لطفاً یک عکس ارسال کنید یا 'تمام' یا 'هیچ' را بنویسید."
+        )
         return AD_PHOTOS
 
 async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     conn = get_db_connection()
     try:
-        with conn:
-            user_data = conn.execute('SELECT phone FROM users WHERE user_id = ?', (user_id,)).fetchone()
-        if not user_data or not user_data[0]:
-            keyboard = ReplyKeyboardMarkup(
-                [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
-                resize_keyboard=True,
-                one_time_keyboard=True
-            )
-            await update.effective_message.reply_text(
-                "📞 لطفاً شماره تلفن خود را برای ثبت آگهی با زدن دکمه زیر ارسال کنید:",
-                reply_markup=keyboard
-            )
-            return AD_PHONE
-        else:
+        user_data = conn.execute('SELECT phone FROM users WHERE user_id = ?', (user_id,)).fetchone()
+        
+        if user_data and user_data['phone']:
+            context.user_data['ad']['phone'] = user_data['phone']
             return await save_ad(update, context)
+        
+        keyboard = ReplyKeyboardMarkup(
+            [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        
+        await update.effective_message.reply_text(
+            "📞 لطفاً شماره تلفن خود را برای ثبت آگهی با زدن دکمه زیر ارسال کنید:",
+            reply_markup=keyboard
+        )
+        return AD_PHONE
     except sqlite3.Error as e:
         logger.error(f"Database error in request_phone: {e}")
-        await update.effective_message.reply_text("❌ خطایی در بررسی اطلاعات رخ داد. لطفاً بعداً دوباره تلاش کنید.")
+        await update.effective_message.reply_text("❌ خطایی در بررسی اطلاعات رخ داد.")
         return ConversationHandler.END
     finally:
         conn.close()
@@ -258,13 +253,14 @@ async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     phone = None
-
+    
     if update.message.contact:
-        phone = update.message.contact.phone_number.strip()
+        phone = update.message.contact.phone_number
     elif update.message.text:
         phone = update.message.text.strip()
-
-    if not phone or not phone.replace("+", "").isdigit() or len(phone.replace("+", "")) < 10:
+    
+    # اعتبارسنجی شماره تلفن
+    if not phone or not phone.lstrip('+').isdigit() or len(phone.lstrip('+')) < 10:
         keyboard = ReplyKeyboardMarkup(
             [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
             resize_keyboard=True,
@@ -275,12 +271,17 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard
         )
         return AD_PHONE
-
+    
+    # ذخیره شماره تلفن در دیتابیس
     conn = get_db_connection()
     try:
-        c = conn.cursor()
-        c.execute('UPDATE users SET phone = ? WHERE user_id = ?', (phone, user_id))
-        conn.commit()
+        with conn:
+            conn.execute(
+                'INSERT OR REPLACE INTO users (user_id, phone) VALUES (?, ?)',
+                (user_id, phone)
+            )
+        
+        context.user_data['ad']['phone'] = phone
         await update.effective_message.reply_text(
             "✅ شماره تلفن با موفقیت ثبت شد. آگهی شما در حال ارسال برای تأیید است...",
             reply_markup=ReplyKeyboardRemove()
@@ -299,17 +300,27 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ad = context.user_data['ad']
     user_id = update.effective_user.id
-    created_at = datetime.now().isoformat()
-    photos = ",".join(ad['photos']) if ad['photos'] else ""
+    
     conn = get_db_connection()
     try:
-        c = conn.cursor()
-        c.execute('INSERT INTO ads (user_id, title, description, price, photos, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-                  (user_id, ad['title'], ad['description'], ad['price'], photos, created_at))
-        conn.commit()
-        ad_id = c.lastrowid
-        await update.effective_message.reply_text("✅ آگهی با موفقیت ثبت شد و در انتظار تأیید مدیر است.")
-        # نوتیفیکیشن به ادمین‌ها
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''INSERT INTO ads 
+                (user_id, title, description, price, photos, created_at) 
+                VALUES (?, ?, ?, ?, ?, ?)''',
+                (
+                    user_id,
+                    ad['title'],
+                    ad['description'],
+                    ad['price'],
+                    ','.join(ad['photos']) if ad['photos'] else '',
+                    datetime.now().isoformat()
+                )
+            )
+            ad_id = cursor.lastrowid
+        
+        # ارسال نوتیفیکیشن به ادمین‌ها
         for admin_id in ADMIN_ID:
             try:
                 await context.bot.send_message(
@@ -318,55 +329,62 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             except Exception as e:
                 logger.error(f"Failed to notify admin {admin_id}: {e}")
+        
+        await update.effective_message.reply_text(
+            "✅ آگهی با موفقیت ثبت شد و در انتظار تأیید مدیر است.\n"
+            "می‌توانید از منوی اصلی برای ثبت آگهی جدید استفاده کنید."
+        )
         return ConversationHandler.END
     except sqlite3.Error as e:
         logger.error(f"Database error in save_ad: {e}")
-        await update.effective_message.reply_text("خطایی در ثبت آگهی رخ داد. لطفاً دوباره تلاش کنید.")
+        await update.effective_message.reply_text(
+            "❌ خطایی در ثبت آگهی رخ داد. لطفاً دوباره تلاش کنید."
+        )
         return ConversationHandler.END
     finally:
         conn.close()
 
-async def start_edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_membership(update, context):
-        return ConversationHandler.END
-    keyboard = ReplyKeyboardMarkup(
-        [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
-    await update.effective_message.reply_text(
-        "📞 لطفاً شماره تلفن خود را با زدن دکمه زیر ارسال کنید:",
-        reply_markup=keyboard
-    )
-    return AD_PHONE
-
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+        message = query.message
+    else:
+        message = update.effective_message
+    
     if update.effective_user.id not in ADMIN_ID:
-        await update.effective_message.reply_text("❌ دسترسی ممنوع!")
+        await message.reply_text("❌ دسترسی ممنوع!")
         return
-
+    
     page = context.user_data.get('admin_page', 1)
     items_per_page = 5
     status_filter = context.user_data.get('admin_status_filter', 'pending')
-
+    
     conn = get_db_connection()
     try:
-        c = conn.cursor()
-        total_ads = c.execute('SELECT COUNT(*) FROM ads WHERE status = ?', (status_filter,)).fetchone()[0]
-        total_pages = (total_ads + items_per_page - 1) // items_per_page
-
-        if page < 1 or page > total_pages:
-            page = 1
-            context.user_data['admin_page'] = page
-
+        cursor = conn.cursor()
+        
+        # تعداد کل آگهی‌ها
+        total_ads = cursor.execute(
+            'SELECT COUNT(*) FROM ads WHERE status = ?', 
+            (status_filter,)
+        ).fetchone()[0]
+        
+        total_pages = max(1, (total_ads + items_per_page - 1) // items_per_page)
+        page = max(1, min(page, total_pages))
+        context.user_data['admin_page'] = page
+        
         offset = (page - 1) * items_per_page
-        ads = c.execute(
-            'SELECT * FROM ads WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+        ads = cursor.execute(
+            '''SELECT * FROM ads 
+            WHERE status = ? 
+            ORDER BY created_at DESC 
+            LIMIT ? OFFSET ?''',
             (status_filter, items_per_page, offset)
         ).fetchall()
-
+        
         if not ads:
-            await update.effective_message.reply_text(
+            await message.reply_text(
                 f"هیچ آگهی‌ای با وضعیت '{status_filter}' یافت نشد.",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔄 تغییر وضعیت", callback_data="change_status")],
@@ -374,13 +392,21 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ])
             )
             return
-
+        
         for ad in ads:
-            user_info = c.execute('SELECT phone FROM users WHERE user_id = ?', (ad['user_id'],)).fetchone()
+            user_info = cursor.execute(
+                'SELECT phone FROM users WHERE user_id = ?', 
+                (ad['user_id'],)
+            ).fetchone()
+            
             phone = user_info['phone'] if user_info else "نامشخص"
-            user = await context.bot.get_chat(ad['user_id'])
-            username = user.username or f"{user.first_name} {user.last_name or ''}"
-
+            
+            try:
+                user = await context.bot.get_chat(ad['user_id'])
+                username = user.username or f"{user.first_name} {user.last_name or ''}"
+            except Exception:
+                username = "نامشخص"
+            
             ad_text = (
                 f"🆔 آگهی: {ad['id']}\n"
                 f"👤 کاربر: {username}\n"
@@ -392,105 +418,137 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📸 تصاویر: {'دارد' if ad['photos'] else 'ندارد'}\n"
                 f"📊 وضعیت: {ad['status']}"
             )
-
+            
             buttons = [
-                [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_{ad['id']}"),
-                 InlineKeyboardButton("❌ رد", callback_data=f"reject_{ad['id']}")],
+                [
+                    InlineKeyboardButton("✅ تأیید", callback_data=f"approve_{ad['id']}"),
+                    InlineKeyboardButton("❌ رد", callback_data=f"reject_{ad['id']}")
+                ],
                 [InlineKeyboardButton("🖼️ نمایش تصاویر", callback_data=f"show_photos_{ad['id']}")]
             ]
-
+            
             if ad['photos']:
-                for photo in ad['photos'].split(","):
-                    await context.bot.send_photo(
-                        chat_id=update.effective_chat.id,
-                        photo=photo,
-                        caption=ad_text,
-                        reply_markup=InlineKeyboardMarkup(buttons)
-                    )
-                    await asyncio.sleep(0.5)
+                photos = ad['photos'].split(',')
+                for photo in photos[:5]:  # حداکثر 5 عکس ارسال می‌شود
+                    try:
+                        await context.bot.send_photo(
+                            chat_id=update.effective_chat.id,
+                            photo=photo,
+                            caption=ad_text,
+                            reply_markup=InlineKeyboardMarkup(buttons)
+                        )
+                        await asyncio.sleep(0.5)
+                    except Exception as e:
+                        logger.error(f"Error sending photo: {e}")
+                        continue
             else:
-                await update.effective_message.reply_text(
+                await message.reply_text(
                     ad_text,
                     reply_markup=InlineKeyboardMarkup(buttons)
                 )
+            
             await asyncio.sleep(0.5)
-
+        
+        # دکمه‌های صفحه‌بندی
         nav_buttons = []
         if page > 1:
             nav_buttons.append(InlineKeyboardButton("⬅️ صفحه قبلی", callback_data=f"page_{page-1}"))
         if page < total_pages:
             nav_buttons.append(InlineKeyboardButton("➡️ صفحه بعدی", callback_data=f"page_{page+1}"))
-        nav_buttons_row = nav_buttons if nav_buttons else []
-
-        await update.effective_message.reply_text(
+        
+        # اگر دکمه‌ای برای نمایش وجود دارد، ردیف را اضافه کنید
+        if nav_buttons:
+            nav_buttons_row = [nav_buttons]
+        else:
+            nav_buttons_row = []
+        
+        await message.reply_text(
             f"📄 صفحه {page} از {total_pages} (وضعیت: {status_filter})",
-            reply_markup=InlineKeyboardMarkup([
-                nav_buttons_row,
-                [InlineKeyboardButton("🔄 تغییر وضعیت", callback_data="change_status")],
-                [InlineKeyboardButton("🏠 بازگشت", callback_data="admin_exit")]
-            ])
+            reply_markup=InlineKeyboardMarkup(
+                nav_buttons_row + [
+                    [InlineKeyboardButton("🔄 تغییر وضعیت", callback_data="change_status")],
+                    [InlineKeyboardButton("🏠 بازگشت", callback_data="admin_exit")]
+                ]
+            )
         )
-
     except Exception as e:
         logger.error(f"Error in admin_panel: {e}")
-        await update.effective_message.reply_text(
-            "❌ خطایی در نمایش آگهی‌ها رخ داد. لطفاً دوباره تلاش کنید."
-        )
+        await message.reply_text("❌ خطایی در نمایش آگهی‌ها رخ داد.")
     finally:
         conn.close()
 
 async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    
     if update.effective_user.id not in ADMIN_ID:
         await query.message.reply_text("❌ دسترسی ممنوع!")
         return
-    action, ad_id = query.data.split("_")
+    
+    action, ad_id = query.data.split('_')
+    ad_id = int(ad_id)
+    
     conn = get_db_connection()
     try:
-        c = conn.cursor()
-        ad = c.execute('SELECT user_id, title FROM ads WHERE id = ?', (ad_id,)).fetchone()
+        cursor = conn.cursor()
+        
+        # دریافت اطلاعات آگهی
+        ad = cursor.execute(
+            'SELECT user_id, title, status FROM ads WHERE id = ?', 
+            (ad_id,)
+        ).fetchone()
+        
+        if not ad:
+            await query.message.reply_text("❌ آگهی یافت نشد!")
+            return
+        
         if action == "approve":
-            c.execute('UPDATE ads SET status="approved" WHERE id=?', (ad_id,))
-            await query.message.reply_text(f"آگهی {ad_id} تأیید شد.")
-            # نوتیفیکیشن به کاربر
-            try:
-                await context.bot.send_message(
-                    chat_id=ad['user_id'],
-                    text=f"✅ آگهی شما با عنوان '{ad['title']}' تأیید شد و در کانال نمایش داده خواهد شد."
-                )
-            except Exception as e:
-                logger.error(f"Failed to notify user {ad['user_id']}: {e}")
+            new_status = "approved"
+            user_message = f"✅ آگهی شما با عنوان '{ad['title']}' تأیید شد."
         elif action == "reject":
-            c.execute('UPDATE ads SET status="rejected" WHERE id=?', (ad_id,))
-            await query.message.reply_text(f"آگهی {ad_id} رد شد.")
-            # نوتیفیکیشن به کاربر
-            try:
-                await context.bot.send_message(
-                    chat_id=ad['user_id'],
-                    text=f"❌ آگهی شما با عنوان '{ad['title']}' رد شد. لطفاً با ادمین تماس بگیرید."
-                )
-            except Exception as e:
-                logger.error(f"Failed to notify user {ad['user_id']}: {e}")
+            new_status = "rejected"
+            user_message = f"❌ آگهی شما با عنوان '{ad['title']}' رد شد."
+        else:
+            return
+        
+        # به‌روزرسانی وضعیت آگهی
+        cursor.execute(
+            'UPDATE ads SET status = ? WHERE id = ?',
+            (new_status, ad_id)
+        )
         conn.commit()
+        
+        # ارسال پیام به کاربر
+        try:
+            await context.bot.send_message(
+                chat_id=ad['user_id'],
+                text=user_message
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify user {ad['user_id']}: {e}")
+        
+        await query.message.reply_text(f"وضعیت آگهی {ad_id} به '{new_status}' تغییر یافت.")
+        await admin_panel(update, context)
     except sqlite3.Error as e:
         logger.error(f"Database error in handle_admin_action: {e}")
-        await query.message.reply_text("خطایی در پردازش درخواست رخ داد.")
+        await query.message.reply_text("❌ خطایی در پردازش درخواست رخ داد.")
     finally:
         conn.close()
 
 async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    
     if update.effective_user.id not in ADMIN_ID:
         await query.message.reply_text("❌ دسترسی ممنوع!")
         return
-
+    
     data = query.data
+    
     if data.startswith("approve_") or data.startswith("reject_"):
         await handle_admin_action(update, context)
     elif data.startswith("page_"):
-        context.user_data['admin_page'] = int(data.split("_")[1])
+        context.user_data['admin_page'] = int(data.split('_')[1])
         await admin_panel(update, context)
     elif data == "change_status":
         buttons = [
@@ -504,22 +562,31 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=InlineKeyboardMarkup(buttons)
         )
     elif data.startswith("status_"):
-        context.user_data['admin_status_filter'] = data.split("_")[1]
+        context.user_data['admin_status_filter'] = data.split('_')[1]
         context.user_data['admin_page'] = 1
         await admin_panel(update, context)
     elif data.startswith("show_photos_"):
-        ad_id = data.split("_")[2]
+        ad_id = int(data.split('_')[2])
         conn = get_db_connection()
         try:
-            ad = conn.execute('SELECT photos FROM ads WHERE id = ?', (ad_id,)).fetchone()
+            ad = conn.execute(
+                'SELECT photos FROM ads WHERE id = ?', 
+                (ad_id,)
+            ).fetchone()
+            
             if ad and ad['photos']:
-                for photo in ad['photos'].split(","):
-                    await context.bot.send_photo(
-                        chat_id=update.effective_chat.id,
-                        photo=photo,
-                        caption=f"تصویر آگهی {ad_id}"
-                    )
-                    await asyncio.sleep(0.5)
+                photos = ad['photos'].split(',')
+                for photo in photos[:5]:  # حداکثر 5 عکس ارسال می‌شود
+                    try:
+                        await context.bot.send_photo(
+                            chat_id=update.effective_chat.id,
+                            photo=photo,
+                            caption=f"تصویر آگهی {ad_id}"
+                        )
+                        await asyncio.sleep(0.5)
+                    except Exception as e:
+                        logger.error(f"Error sending photo: {e}")
+                        continue
             else:
                 await query.message.reply_text("📸 این آگهی تصویری ندارد.")
         except Exception as e:
@@ -530,38 +597,150 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
     elif data == "admin_exit":
         await query.message.reply_text("🏠 بازگشت به منوی اصلی.")
         await start(update, context)
+    elif data == "admin_panel":
+        await admin_panel(update, context)
+
+async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+        message = query.message
+    else:
+        message = update.effective_message
+    
+    one_year_ago = datetime.now() - timedelta(days=365)
+    
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        ads = cursor.execute(
+            '''SELECT * FROM ads 
+            WHERE status = 'approved' 
+            AND datetime(created_at) >= ? 
+            ORDER BY created_at DESC''',
+            (one_year_ago.isoformat(),)
+        ).fetchall()
+        
+        if not ads:
+            await message.reply_text("هیچ آگهی تأیید شده‌ای وجود ندارد.")
+            return
+        
+        for ad in ads:
+            text = (
+                f"📌 عنوان: {ad['title']}\n"
+                f"💬 توضیحات: {ad['description']}\n"
+                f"💰 قیمت: {ad['price']}\n"
+                f"📅 تاریخ: {ad['created_at']}"
+            )
+            
+            try:
+                if ad['photos']:
+                    photos = ad['photos'].split(',')
+                    for photo in photos[:3]:  # حداکثر 3 عکس نمایش داده می‌شود
+                        await context.bot.send_photo(
+                            chat_id=update.effective_chat.id,
+                            photo=photo,
+                            caption=text
+                        )
+                        await asyncio.sleep(0.5)
+                else:
+                    await message.reply_text(text)
+                
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                logger.error(f"Failed to send ad {ad['id']}: {e}")
+    except sqlite3.Error as e:
+        logger.error(f"Database error in show_ads: {e}")
+        await message.reply_text("❌ خطایی در نمایش آگهی‌ها رخ داد.")
+    finally:
+        conn.close()
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+        message = query.message
+    else:
+        message = update.effective_message
+    
+    if update.effective_user.id not in ADMIN_ID:
+        await message.reply_text("❌ دسترسی ممنوع!")
+        return
+    
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # آمار کاربران
+        total_users = cursor.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+        new_users_today = cursor.execute(
+            'SELECT COUNT(*) FROM users WHERE date(joined) = date("now")'
+        ).fetchone()[0]
+        
+        # آمار آگهی‌ها
+        total_ads = cursor.execute('SELECT COUNT(*) FROM ads').fetchone()[0]
+        pending_ads = cursor.execute(
+            'SELECT COUNT(*) FROM ads WHERE status = "pending"'
+        ).fetchone()[0]
+        approved_ads = cursor.execute(
+            'SELECT COUNT(*) FROM ads WHERE status = "approved"'
+        ).fetchone()[0]
+        
+        # آمار ادمین‌ها
+        total_admins = cursor.execute('SELECT COUNT(*) FROM admins').fetchone()[0]
+        
+        stats_text = (
+            "📊 آمار ربات:\n\n"
+            f"👥 کاربران کل: {total_users}\n"
+            f"🆕 کاربران امروز: {new_users_today}\n\n"
+            f"📝 آگهی‌های کل: {total_ads}\n"
+            f"⏳ در انتظار تأیید: {pending_ads}\n"
+            f"✅ تأیید شده: {approved_ads}\n\n"
+            f"👨‍💼 تعداد ادمین‌ها: {total_admins}"
+        )
+        
+        await message.reply_text(stats_text)
+    except sqlite3.Error as e:
+        logger.error(f"Database error in stats: {e}")
+        await message.reply_text("❌ خطایی در نمایش آمار رخ داد.")
+    finally:
+        conn.close()
 
 async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_ID:
-        await update.effective_message.reply_text("❌ دسترسی ممنوع! فقط ادمین‌ها می‌توانند ادمین اضافه کنند.")
+        await update.effective_message.reply_text("❌ دسترسی ممنوع!")
         return
-
+    
     args = context.args
     if not args or not args[0].isdigit():
-        await update.effective_message.reply_text("لطفاً ID کاربر را به صورت عددی وارد کنید. مثال: /add_admin 123456789")
+        await update.effective_message.reply_text(
+            "⚠️ لطفاً ID کاربر را وارد کنید:\n"
+            "مثال: /add_admin 123456789"
+        )
         return
-
+    
     new_admin_id = int(args[0])
     if new_admin_id in ADMIN_ID:
         await update.effective_message.reply_text("⚠️ این کاربر قبلاً ادمین است.")
         return
-
+    
     conn = get_db_connection()
     try:
-        c = conn.cursor()
-        c.execute('INSERT INTO admins (user_id) VALUES (?)', (new_admin_id,))
-        conn.commit()
-        ADMIN_ID.append(new_admin_id)  # به‌روزرسانی لیست ادمین‌ها
-        await update.effective_message.reply_text(f"✅ کاربر با ID {new_admin_id} به عنوان ادمین اضافه شد.")
-        # نوتیفیکیشن به همه ادمین‌ها
-        for admin_id in ADMIN_ID:
-            try:
-                await context.bot.send_message(
-                    chat_id=admin_id,
-                    text=f"📢 ادمین جدید اضافه شد: ID {new_admin_id}"
-                )
-            except Exception as e:
-                logger.error(f"Failed to notify admin {admin_id}: {e}")
+        with conn:
+            conn.execute('INSERT INTO admins (user_id) VALUES (?)', (new_admin_id,))
+        
+        ADMIN_ID.append(new_admin_id)
+        await update.effective_message.reply_text(f"✅ کاربر با ID {new_admin_id} به ادمین‌ها اضافه شد.")
+        
+        # اطلاع به ادمین جدید
+        try:
+            await context.bot.send_message(
+                chat_id=new_admin_id,
+                text=f"🎉 شما به عنوان ادمین ربات اتوگالری بلوری منصوب شدید!\n"
+                     f"از دستور /admin برای دسترسی به پنل مدیریت استفاده کنید."
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify new admin {new_admin_id}: {e}")
     except sqlite3.Error as e:
         logger.error(f"Database error in add_admin: {e}")
         await update.effective_message.reply_text("❌ خطایی در افزودن ادمین رخ داد.")
@@ -570,139 +749,115 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_ID:
-        await update.effective_message.reply_text("❌ دسترسی ممنوع! فقط ادمین‌ها می‌توانند ادمین حذف کنند.")
+        await update.effective_message.reply_text("❌ دسترسی ممنوع!")
         return
-
+    
     args = context.args
     if not args or not args[0].isdigit():
-        await update.effective_message.reply_text("لطفاً ID کاربر را به صورت عددی وارد کنید. مثال: /remove_admin 123456789")
+        await update.effective_message.reply_text(
+            "⚠️ لطفاً ID کاربر را وارد کنید:\n"
+            "مثال: /remove_admin 123456789"
+        )
         return
-
+    
     admin_id_to_remove = int(args[0])
     if admin_id_to_remove not in ADMIN_ID:
         await update.effective_message.reply_text("⚠️ این کاربر ادمین نیست.")
         return
-
+    
     if len(ADMIN_ID) <= 1:
         await update.effective_message.reply_text("⚠️ نمی‌توانید آخرین ادمین را حذف کنید!")
         return
-
+    
     conn = get_db_connection()
     try:
-        c = conn.cursor()
-        c.execute('DELETE FROM admins WHERE user_id = ?', (admin_id_to_remove,))
-        conn.commit()
-        ADMIN_ID.remove(admin_id_to_remove)  # به‌روزرسانی لیست ادمین‌ها
-        await update.effective_message.reply_text(f"✅ کاربر با ID {admin_id_to_remove} از لیست ادمین‌ها حذف شد.")
-        # نوتیفیکیشن به همه ادمین‌ها
-        for admin_id in ADMIN_ID:
-            try:
-                await context.bot.send_message(
-                    chat_id=admin_id,
-                    text=f"📢 ادمین با ID {admin_id_to_remove} حذف شد."
-                )
-            except Exception as e:
-                logger.error(f"Failed to notify admin {admin_id}: {e}")
+        with conn:
+            conn.execute('DELETE FROM admins WHERE user_id = ?', (admin_id_to_remove,))
+        
+        ADMIN_ID.remove(admin_id_to_remove)
+        await update.effective_message.reply_text(f"✅ کاربر با ID {admin_id_to_remove} از ادمین‌ها حذف شد.")
+        
+        # اطلاع به ادمین حذف شده
+        try:
+            await context.bot.send_message(
+                chat_id=admin_id_to_remove,
+                text="❌ دسترسی ادمین شما از ربات اتوگالری بلوری حذف شد."
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify removed admin {admin_id_to_remove}: {e}")
     except sqlite3.Error as e:
         logger.error(f"Database error in remove_admin: {e}")
         await update.effective_message.reply_text("❌ خطایی در حذف ادمین رخ داد.")
     finally:
         conn.close()
 
-async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    one_year_ago = datetime.now() - timedelta(days=365)
-    conn = get_db_connection()
-    try:
-        c = conn.cursor()
-        ads = c.execute("SELECT * FROM ads WHERE status='approved' AND datetime(created_at) >= ?", (one_year_ago.isoformat(),)).fetchall()
-        if not ads:
-            await update.effective_message.reply_text("هیچ آگهی تأیید شده‌ای وجود ندارد.")
-            return
-        for ad in ads:
-            text = f"📌 عنوان: {ad['title']}\n💬 توضیحات: {ad['description']}\n💰 قیمت: {ad['price']}"
-            try:
-                if ad['photos']:
-                    for photo in ad['photos'].split(","):
-                        await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=text)
-                        await asyncio.sleep(0.5)
-                else:
-                    await update.effective_message.reply_text(text)
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                logger.error(f"Failed to send ad {ad['id']}: {e}")
-    except sqlite3.Error as e:
-        logger.error(f"Database error in show_ads: {e}")
-        await update.effective_message.reply_text("خطایی در نمایش آگهی‌ها رخ داد.")
-    finally:
-        conn.close()
-
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_ID:
-        await update.effective_message.reply_text("❌ دسترسی ممنوع!")
-        return
-    conn = get_db_connection()
-    try:
-        c = conn.cursor()
-        total_users = c.execute('SELECT COUNT(*) FROM users').fetchone()[0]
-        total_ads = c.execute('SELECT COUNT(*) FROM ads').fetchone()[0]
-        total_admins = c.execute('SELECT COUNT(*) FROM admins').fetchone()[0]
-        await update.effective_message.reply_text(
-            f"📊 آمار:\nکاربران: {total_users}\nآگهی‌ها: {total_ads}\nادمین‌ها: {total_admins}"
-        )
-    except sqlite3.Error as e:
-        logger.error(f"Database error in stats: {e}")
-        await update.effective_message.reply_text("خطایی در نمایش آمار رخ داد.")
-    finally:
-        conn.close()
-
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.effective_message.reply_text("❌ عملیات لغو شد.", reply_markup=ReplyKeyboardRemove())
+    await update.effective_message.reply_text(
+        "❌ عملیات فعلی لغو شد.",
+        reply_markup=ReplyKeyboardRemove()
+    )
     return ConversationHandler.END
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logger.warning(f'Update "{update}" caused error "{context.error}"')
-
-def main():
-    try:
-        logger.info("Starting bot...")
-        application = Application.builder().token(TOKEN).post_init(post_init).post_stop(post_stop).build()
-
-        conv_handler = ConversationHandler(
-            entry_points=[
-                CommandHandler("post_ad", post_ad),
-                CallbackQueryHandler(post_ad, pattern="post_ad"),
-                CommandHandler("edit_info", start_edit_info),
-                CallbackQueryHandler(start_edit_info, pattern="edit_info"),
-            ],
-            states={
-                AD_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)],
-                AD_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)],
-                AD_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)],
-                AD_PHOTOS: [MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), receive_ad_photos)],
-                AD_PHONE: [MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), receive_phone)],
-            },
-            fallbacks=[CommandHandler("cancel", cancel)],
-            per_message=False
+    logger.error(f"Update {update} caused error {context.error}", exc_info=context.error)
+    
+    if update and update.effective_message:
+        await update.effective_message.reply_text(
+            "⚠️ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید."
         )
 
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(conv_handler)
-        application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve|reject|page|status|show_photos|change_status|admin_exit)_"))
-        application.add_handler(CommandHandler("stats", stats))
-        application.add_handler(CallbackQueryHandler(stats, pattern="stats"))
-        application.add_handler(CommandHandler("show_ads", show_ads))
-        application.add_handler(CallbackQueryHandler(show_ads, pattern="show_ads"))
-        application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="check_membership"))
-        application.add_handler(CommandHandler("admin", admin_panel))
-        application.add_handler(CommandHandler("add_admin", add_admin))
-        application.add_handler(CommandHandler("remove_admin", remove_admin))
-        application.add_error_handler(error_handler)
-
-        logger.info("Bot is running...")
-        application.run_polling(allowed_updates=["message", "callback_query"], drop_pending_updates=True)
-    except Exception as e:
-        logger.error("Error in main: %s", str(e))
-        raise
+# --- تنظیمات اصلی ربات ---
+def main():
+    # مقداردهی اولیه دیتابیس
+    init_db()
+    global ADMIN_ID
+    ADMIN_ID = load_admin_ids()
+    
+    # ساخت اپلیکیشن ربات
+    application = Application.builder().token(TOKEN).build()
+    
+    # تنظیم هندلرهای گفتگو
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("post_ad", post_ad),
+            CallbackQueryHandler(post_ad, pattern="^post_ad$"),
+            CommandHandler("edit_info", start_edit_info),
+            CallbackQueryHandler(start_edit_info, pattern="^edit_info$"),
+        ],
+        states={
+            AD_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)],
+            AD_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)],
+            AD_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)],
+            AD_PHOTOS: [
+                MessageHandler(filters.PHOTO, receive_ad_photos),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_photos)
+            ],
+            AD_PHONE: [
+                MessageHandler(filters.CONTACT, receive_phone),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=False
+    )
+    
+    # اضافه کردن هندلرها
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(conv_handler)
+    application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
+    application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve|reject|page|status|show_photos|change_status|admin_exit|admin_panel)_"))
+    application.add_handler(CallbackQueryHandler(stats, pattern="^stats$"))
+    application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
+    application.add_handler(CommandHandler("add_admin", add_admin))
+    application.add_handler(CommandHandler("remove_admin", remove_admin))
+    application.add_error_handler(error_handler)
+    
+    # اجرای ربات
+    logger.info("Starting bot...")
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True
+    )
 
 if __name__ == "__main__":
     main()
