@@ -180,7 +180,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not await check_membership(update, context):
-        await message.reply_text("⚠️ لطفا ابتدا در کانال عضو شوید!")
+        await message.reply_text(" /start ⚠️ لطفا ابتدا در کانال عضو شوید!")
         return ConversationHandler.END
     if 'ad' not in context.user_data:
         context.user_data['ad'] = {'photos': []}
@@ -193,7 +193,7 @@ async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("لطفاً عنوان معتبر وارد کنید.")
         return AD_TITLE
     context.user_data['ad']['title'] = title
-    await update.effective_message.reply_text("لطفا توضیحات آگهی را وارد کنید:")
+    await update.effective_message.reply_text("لطفا مشخصات خودرو(کارکرد،بیمه،رنگ و...) را وارد کنید:")
     return AD_DESCRIPTION
 
 async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -202,7 +202,7 @@ async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_T
         await update.effective_message.reply_text("لطفاً توضیحات معتبر وارد کنید.")
         return AD_DESCRIPTION
     context.user_data['ad']['description'] = description
-    await update.effective_message.reply_text("لطفا قیمت آگهی را وارد کنید:")
+    await update.effective_message.reply_text("لطفا قیمت خودرو خود را وارد کنید:")
     return AD_PRICE
 
 async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -211,7 +211,7 @@ async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("لطفاً قیمت را به صورت عددی و به تومان وارد کنید.")
         return AD_PRICE
     context.user_data['ad']['price'] = price
-    await update.effective_message.reply_text("لطفا عکس آگهی را ارسال کنید:")
+    await update.effective_message.reply_text("لطفا عکس خودرو خود را ارسال کنید:")
     return AD_PHOTOS
 
 async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
