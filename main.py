@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import logging
-import asyncio
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
@@ -180,7 +179,7 @@ async def start_edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "لطفاً شماره تلفن جدید را با زدن دکمه زیر یا تایپ دستی ارسال کنید:",
             reply_markup=keyboard
         )
-        return AD_PHONE  # استفاده از همان حالت AD_PHONE برای دریافت شماره
+        return AD_PHONE
     except sqlite3.Error as e:
         logger.error(f"Database error in start_edit_info: {e}")
         await message.reply_text("❌ خطایی در بررسی اطلاعات رخ داد.")
@@ -475,7 +474,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             if ad['photos']:
                 photos = ad['photos'].split(',')
-                for photo in photos[:5]:  # حداکثر 5 عکس ارسال می‌شود
+                for photo in photos[:5]:
                     try:
                         await context.bot.send_photo(
                             chat_id=update.effective_chat.id,
@@ -495,14 +494,12 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             await asyncio.sleep(0.5)
         
-        # دکمه‌های صفحه‌بندی
         nav_buttons = []
         if page > 1:
             nav_buttons.append(InlineKeyboardButton("⬅️ صفحه قبلی", callback_data=f"page_{page-1}"))
         if page < total_pages:
             nav_buttons.append(InlineKeyboardButton("➡️ صفحه بعدی", callback_data=f"page_{page+1}"))
         
-        # اگر دکمه‌ای برای نمایش وجود دارد، ردیف را اضافه کنید
         if nav_buttons:
             nav_buttons_row = [nav_buttons]
         else:
@@ -538,7 +535,6 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         cursor = conn.cursor()
         
-        # دریافت اطلاعات آگهی
         ad = cursor.execute(
             'SELECT user_id, title, status FROM ads WHERE id = ?', 
             (ad_id,)
@@ -557,14 +553,12 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             return
         
-        # به‌روزرسانی وضعیت آگهی
         cursor.execute(
             'UPDATE ads SET status = ? WHERE id = ?',
             (new_status, ad_id)
         )
         conn.commit()
         
-        # ارسال پیام به کاربر
         try:
             await context.bot.send_message(
                 chat_id=ad['user_id'],
@@ -610,6 +604,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
     elif data.startswith("status_"):
         context.user_data['admin_status_filter'] = data.split('_')[1]
         context.user_data['admin_page'] = 1
+        await adminV2.api.telegram.org (https://core.telegram.org/bots/api#inlinekeyboardbutton) استفاده کنید.
         await admin_panel(update, context)
     elif data.startswith("show_photos_"):
         ad_id = int(data.split('_')[2])
@@ -622,7 +617,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             
             if ad and ad['photos']:
                 photos = ad['photos'].split(',')
-                for photo in photos[:5]:  # حداکثر 5 عکس ارسال می‌شود
+                for photo in photos[:5]:
                     try:
                         await context.bot.send_photo(
                             chat_id=update.effective_chat.id,
@@ -682,7 +677,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 if ad['photos']:
                     photos = ad['photos'].split(',')
-                    for photo in photos[:3]:  # حداکثر 3 عکس نمایش داده می‌شود
+                    for photo in photos[:3]:
                         await context.bot.send_photo(
                             chat_id=update.effective_chat.id,
                             photo=photo,
@@ -717,13 +712,11 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         cursor = conn.cursor()
         
-        # آمار کاربران
         total_users = cursor.execute('SELECT COUNT(*) FROM users').fetchone()[0]
         new_users_today = cursor.execute(
             'SELECT COUNT(*) FROM users WHERE date(joined) = date("now")'
         ).fetchone()[0]
         
-        # آمار آگهی‌ها
         total_ads = cursor.execute('SELECT COUNT(*) FROM ads').fetchone()[0]
         pending_ads = cursor.execute(
             'SELECT COUNT(*) FROM ads WHERE status = "pending"'
@@ -732,7 +725,6 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'SELECT COUNT(*) FROM ads WHERE status = "approved"'
         ).fetchone()[0]
         
-        # آمار ادمین‌ها
         total_admins = cursor.execute('SELECT COUNT(*) FROM admins').fetchone()[0]
         
         stats_text = (
@@ -778,7 +770,6 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ADMIN_ID.append(new_admin_id)
         await update.effective_message.reply_text(f"✅ کاربر با ID {new_admin_id} به ادمین‌ها اضافه شد.")
         
-        # اطلاع به ادمین جدید
         try:
             await context.bot.send_message(
                 chat_id=new_admin_id,
@@ -823,7 +814,6 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ADMIN_ID.remove(admin_id_to_remove)
         await update.effective_message.reply_text(f"✅ کاربر با ID {admin_id_to_remove} از ادمین‌ها حذف شد.")
         
-        # اطلاع به ادمین حذف شده
         try:
             await context.bot.send_message(
                 chat_id=admin_id_to_remove,
@@ -853,7 +843,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # --- تنظیمات اصلی ربات ---
-async def main():
+def main():
     # مقداردهی اولیه دیتابیس
     init_db()
     global ADMIN_ID
@@ -863,7 +853,7 @@ async def main():
     application = Application.builder().token(TOKEN).build()
     
     # غیرفعال کردن webhook و حذف به‌روزرسانی‌های در انتظار
-    await application.bot.delete_webhook(drop_pending_updates=True)
+    application.bot.delete_webhook(drop_pending_updates=True)
     logger.info("✅ Webhook غیرفعال شد")
     
     # تنظیم هندلرهای گفتگو
@@ -884,11 +874,11 @@ async def main():
             ],
             AD_PHONE: [
                 MessageHandler(filters.CONTACT, receive_phone),
-                MessageHandler(filters.TEXT & ~filters.COMMAND,receive_phone)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=True  # تغییر به True برای رفع هشدار PTBUserWarning
+        per_message=False  # تغییر به False برای رفع اخطار PTBUserWarning
     )
     
     # اضافه کردن هندلرها
@@ -905,17 +895,12 @@ async def main():
     
     # اجرای ربات
     logger.info("🚀 Starting bot...")
-    await application.run_polling(
+    application.run_polling(
         allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,
-        timeout=10
+        timeout=10,
+        close_loop=False
     )
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        # اگر حلقه در حال اجراست، تسک را به آن اضافه می‌کنیم
-        loop.create_task(main())
-    else:
-        # اگر حلقه اجرا نشده، آن را اجرا می‌کنیم
-        asyncio.run(main())
+    main()
