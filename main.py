@@ -131,8 +131,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         welcome_text = (
             f"سلام {user.first_name} عزیز! 👋\n\n"
-            "به *اتوگالری بلوری* خوش آمدید.\n\n"
-            "از دکمه‌های زیر برای ادامه استفاده کنید:"
+            "به ربات رسمی ثبت آگهی خودرو *اتوگالری بلوری* خوش آمدید.از طریق این ربات می‌توانید:\n  آگهی فروش خودروی خود را به‌صورت مرحله‌به‌مرحله ثبت کنید\n  آگهی‌های ثبت‌شده را مشاهده و جست‌وجو نمایید\n لطفاً یکی از گزینه‌های زیر را انتخاب کنید:\n\n"
         )
         
         await update.effective_message.reply_text(
@@ -202,7 +201,7 @@ async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     
     context.user_data['ad'] = {'photos': []}
-    await message.reply_text("📝 لطفاً عنوان آگهی خود را وارد کنید:")
+    await message.reply_text(" 📝 لطفاً برند و مدل خودروی خود را وارد نمایید.(مثال: پژو ۲۰۶ تیپ ۲، کیا سراتو، تویوتا کمری و …):")
     return AD_TITLE
 
 async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -212,7 +211,7 @@ async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AD_TITLE
     
     context.user_data['ad']['title'] = title
-    await update.effective_message.reply_text("لطفا مشخصات خودرو (کارکرد، بیمه، رنگ و ...) را وارد کنید:")
+    await update.effective_message.reply_text("لطفا اطلاعات خودرو شامل رنگ ، کارکرد ، وضعیت بدنه ، وضعیت فنی و غیره را وارد نمایید.")
     return AD_DESCRIPTION
 
 async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -233,7 +232,7 @@ async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     context.user_data['ad']['price'] = price
     await update.effective_message.reply_text(
-        "لطفا عکس خودرو را ارسال کنید (یا 'تمام' برای اتمام یا 'هیچ' اگر عکسی ندارید):"
+        "لطفا عکس خودرو را ارسال کنید(حداکثر5تصویر) (یا 'تمام' برای اتمام یا 'هیچ' اگر عکسی ندارید):"
     )
     return AD_PHOTOS
 
@@ -377,7 +376,7 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Failed to notify admin {admin_id}: {e}")
         
         await update.effective_message.reply_text(
-            "✅ آگهی با موفقیت ثبت شد و در انتظار تأیید مدیر است.\n"
+            "از اعتماد شما سپاسگزاریم.✅ آگهی با موفقیت ثبت شد و در انتظار تأیید مدیر است.\n"
             "می‌توانید از منوی اصلی برای ثبت آگهی جدید استفاده کنید."
         )
         return ConversationHandler.END
@@ -451,6 +450,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user = await context.bot.get_chat(ad['user_id'])
                 username = user.username or f"{user.first_name} {user.last_name or ''}"
             except Exception:
+                user = None
                 username = "نامشخص"
             
             ad_text = (
@@ -884,11 +884,11 @@ async def main():
             ],
             AD_PHONE: [
                 MessageHandler(filters.CONTACT, receive_phone),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)
+                MessageHandler(filters.TEXT & ~filters.COMMAND,receive_phone)
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=False
+        per_message=True  # تغییر به True برای رفع هشدار PTBUserWarning
     )
     
     # اضافه کردن هندلرها
@@ -900,6 +900,7 @@ async def main():
     application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
     application.add_handler(CommandHandler("add_admin", add_admin))
     application.add_handler(CommandHandler("remove_admin", remove_admin))
+    application.add_handler(CommandHandler("admin", admin_panel))
     application.add_error_handler(error_handler)
     
     # اجرای ربات
@@ -911,4 +912,10 @@ async def main():
     )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        # اگر حلقه در حال اجراست، تسک را به آن اضافه می‌کنیم
+        loop.create_task(main())
+    else:
+        # اگر حلقه اجرا نشده، آن را اجرا می‌کنیم
+        asyncio.run(main())
