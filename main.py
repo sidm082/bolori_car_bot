@@ -8,18 +8,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from dotenv import load_dotenv
 from telegram.ext import ApplicationBuilder
 
-application = ApplicationBuilder() \
-    .token os.getenv("BOT_TOKEN") \
-    .post_init(post_init) \
-    .post_stop(post_stop) \
-    .build()
-
-async def post_init(application):
-    print("ربات با موفقیت راه‌اندازی شد!")
-    
-async def post_stop(application):
-    print("ربات در حال توقف...")
-    # میتوانید اینجا پیام به ادمین ارسال کنید
 # تنظیم لاگ‌گیری
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +40,13 @@ def load_bot_token():
         raise ValueError("BOT_TOKEN contains whitespace")
     
     return token
+
+async def post_init(application):
+    print("ربات با موفقیت راه‌اندازی شد!")
+    
+async def post_stop(application):
+    print("ربات در حال توقف...")
+    # میتوانید اینجا پیام به ادمین ارسال کنید
 
 try:
     TOKEN = load_bot_token()
@@ -670,7 +665,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 def main():
     try:
         logger.info("Starting bot...")
-        application = Application.builder().token(TOKEN).build()
+        application = Application.builder().token(TOKEN).post_init(post_init).post_stop(post_stop).build()
 
         conv_handler = ConversationHandler(
             entry_points=[
