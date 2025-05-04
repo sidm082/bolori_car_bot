@@ -94,12 +94,12 @@ def load_admin_ids():
 async def send_message_with_rate_limit(bot, chat_id, text=None, photo=None, reply_markup=None):
     try:
         if photo:
-            await bot.send_photo(chat_id=chat_id, photo=photo, caption=text, reply_markup=reply_markup)
+            await bot.send_photo(chat_id=chat_id, photo=photo, caption=text, reply_markup=reply_markup, parse_mode='Markdown')
         else:
-            await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+            await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup, parse_mode='Markdown')
         await asyncio.sleep(1)  # تأخیر 1 ثانیه برای رعایت نرخ
     except Exception as e:
-        logger.error(f"Error sending message/photo: {e}")
+        logger.error(f"Error sending message/photo to {chat_id}: {e}")
 
 # --- توابع اصلی ربات ---
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -162,7 +162,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             with conn:
                 conn.execute(
-                    'INSERT OR REPLACE INTO users (user_id, joined) VALUES (?, ?)',
+                    'INSERT OR REPLACE INTO users (user_id, joined) VALUES (?, ?ت،
                     (user.id, datetime.now().isoformat())
                 )
         except sqlite3.Error as e:
@@ -567,7 +567,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         cursor = conn.cursor()
         
         ad = cursor.execute(
-            'SELECT user_id, title, status FROM ads WHERE id = ?', 
+            'SELECT user_id, title, description, price, photos, status FROM ads WHERE id = ?', 
             (ad_id,)
         ).fetchone()
         
@@ -577,19 +577,84 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         if action == "approve":
             new_status = "approved"
-            user_message = f"✅ آگهی شما با عنوان '{ad['title']}' تأیید شد."
+            user_message = f"✅ آگهی شما با عنوان *{ad['title']}* تأیید شد و برای همه کاربران ارسال شد."
+            
+            # دریافت اطلاعات کاربر برای شماره تماس
+            user_info = cursor.execute(
+                'SELECT phone FROM users WHERE user_id = ?', 
+                (ad['user_id'],)
+            ).fetchone()
+            phone = user_info['phone'] if user_info else "نامشخص"
+            
+            # فرمت آگهی
+            ad_text = (
+                f"📢 *آگهی جدید تأیید شده*\n\n"
+                f"📌 *عنوان*: {ad['title']}\n"
+                f"💬 *توضیحات*: {ad['description']}\n"
+                f"💰 *قیمت*: {ad['price']} تومان\n"
+                f"📞 *شماره تماس*: {phone}\n"
+                f"📅 *تاریخ*: {ad['created_at']}\n"
+                f"➖➖➖➖➖\n"
+                f"☑️ *اتوگالری بلوری*\n"
+                f"▫️خرید▫️فروش▫️کارشناسی\n"
+                f"📲 +989153632957\n"
+                f"📍 @{CHANNEL_USERNAME}"
+            )
+            
+            # ارسال به کانال
+            if ad['photos']:
+                photos = ad['photos'].split(',')
+                for photo in photos[:3]:  # حداکثر 3 عکس برای کانال
+                    await send_message_with_rate_limit(
+                        context.bot,
+                        CHANNEL_ID,
+                        text=ad_text,
+                        photo=photo
+                    )
+            else:
+                await send_message_with_rate_limit(
+                    context.bot,
+                    CHANNEL_ID,
+                    text=ad_text
+                )
+            
+            # ارسال به همه کاربران
+            users = cursor.execute('SELECT user_id FROM users').fetchall()
+            for user in users:
+                user_id = user['user_id']
+                try:
+                    if ad['photos']:
+                        photos = ad['photos'].split(',')
+                        for photo in photos[:3]:  # حداکثر 3 عکس برای هر کاربر
+                            await send_message_with_rate_limit(
+                                context.bot,
+                                user_id,
+                                text=ad_text,
+                                photo=photo
+                            )
+                    else:
+                        await send_message_with_rate_limit(
+                            context.bot,
+                            user_id,
+                            text=ad_text
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to send ad {ad_id} to user {user_id}: {e}")
+            
         elif action == "reject":
             new_status = "rejected"
-            user_message = f"❌ آگهی شما با عنوان '{ad['title']}' رد شد."
+            user_message = f"❌ آگهی شما با عنوان *{ad['title']}* رد شد."
         else:
             return
         
+        # به‌روزرسانی وضعیت آگهی
         cursor.execute(
             'UPDATE ads SET status = ? WHERE id = ?',
             (new_status, ad_id)
         )
         conn.commit()
         
+        # اطلاع‌رسانی به کاربر ارسال‌کننده آگهی
         try:
             await send_message_with_rate_limit(
                 context.bot,
@@ -599,7 +664,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             logger.error(f"Failed to notify user {ad['user_id']}: {e}")
         
-        await query.message.reply_text(f"وضعیت آگهی {ad_id} به '{new_status}' تغییر یافت.")
+        await query.message.reply_text(f"وضعیت آگهی {ad_id} به *{new_status}* تغییر یافت.")
         await admin_panel(update, context)
     except sqlite3.Error as e:
         logger.error(f"Database error in handle_admin_action: {e}")
@@ -698,11 +763,18 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         for ad in ads:
+            user_info = cursor.execute(
+                'SELECT phone FROM users WHERE user_id = ?', 
+                (ad['user_id'],)
+            ).fetchone()
+            phone = user_info['phone'] if user_info else "نامشخص"
+            
             text = (
-                f"📌 عنوان: {ad['title']}\n"
-                f"💬 توضیحات: {ad['description']}\n"
-                f"💰 قیمت: {ad['price']}\n"
-                f"📅 تاریخ: {ad['created_at']}"
+                f"📌 *عنوان*: {ad['title']}\n"
+                f"💬 *توضیحات*: {ad['description']}\n"
+                f"💰 *قیمت*: {ad['price']} تومان\n"
+                f"📞 *شماره تماس*: {phone}\n"
+                f"📅 *تاریخ*: {ad['created_at']}"
             )
             
             try:
