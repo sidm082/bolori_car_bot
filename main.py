@@ -601,10 +601,9 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             "📊 وضعیت مورد نظر را انتخاب کنید:",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
-    elif data.startswith("status_"):
+      elif data.startswith("status_"):
         context.user_data['admin_status_filter'] = data.split('_')[1]
         context.user_data['admin_page'] = 1
-        await adminV2.api.telegram.org (https://core.telegram.org/bots/api#inlinekeyboardbutton) استفاده کنید.
         await admin_panel(update, context)
     elif data.startswith("show_photos_"):
         ad_id = int(data.split('_')[2])
