@@ -664,7 +664,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         await admin_panel(update, context)
     except sqlite3.Error as e:
         logger.error(f"Database error in handle_admin_action: {e}")
-        await query.message.reply_text("❌ خطایی در پرداز Гершен درخواست رخ داد.")
+        await query.message.reply_text("❌ خطایی در پردازش درخواست رخ داد.")
     finally:
         conn.close()
 
@@ -960,14 +960,14 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
             text="⚠️ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید."
         )
 
-def main():
+async def main():
     init_db()
     global ADMIN_ID
     ADMIN_ID = load_admin_ids()
     
     application = Application.builder().token(TOKEN).build()
     
-    application.bot.delete_webhook(drop_pending_updates=True)
+    await application.bot.delete_webhook(drop_pending_updates=True)
     logger.info("✅ Webhook غیرفعال شد")
     
     conv_handler = ConversationHandler(
@@ -1003,10 +1003,10 @@ def main():
     application.add_handler(CommandHandler("add_admin", add_admin))
     application.add_handler(CommandHandler("remove_admin", remove_admin))
     application.add_handler(CommandHandler("admin", admin_panel))
-    application.add_handler(error_handler)
+    application.add_error_handler(error_handler)
     
     logger.info("🚀 Starting bot...")
-    application.run_polling(
+    await application.run_polling(
         allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,
         timeout=10,
@@ -1014,4 +1014,4 @@ def main():
     )
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
