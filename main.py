@@ -742,7 +742,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = update.effective_message
     
     if update.effective_user.id not in ADMIN_ID:
-        await message.reply l_text("❌ دسترسی ممنوع!")
+        await message.reply_text("❌ دسترسی ممنوع!")
         return
     
     conn = get_db_connection()
@@ -848,7 +848,6 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("⚠️ این کاربر ادمین نیست.")
         return
     
-    if len(ADMIN_ID) <= 1ստեղնاسازي 1
     if admin_id_to_remove == update.effective_user.id:
         await update.effective_message.reply_text("⚠️ نمی‌توانید خودتان را از ادمین‌ها حذف کنید!")
         return
