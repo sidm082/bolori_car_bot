@@ -1014,4 +1014,15 @@ async def main():
     )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(main())
+    except RuntimeError as e:
+        if "This event loop is already running" in str(e):
+            # If the loop is already running, create a new task
+            asyncio.ensure_future(main())
+            loop.run_forever()
+        else:
+            raise e
+    finally:
+        loop.close()
