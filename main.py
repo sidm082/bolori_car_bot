@@ -162,7 +162,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             with conn:
                 conn.execute(
-                    'INSERT OR REPLACE INTO users (user_id, joined) VALUES (?, ?)',
+                    'INSERT OR REPLACE INTO users (user_id, joined) VALUES (?, ?ت،
                     (user.id, datetime.now().isoformat())
                 )
         except sqlite3.Error as e:
@@ -695,7 +695,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             [InlineKeyboardButton("🏠 بازگشت", callback_data="admin_exit")]
         ]
         await query.message.reply_text(
-            "📊 Ascendantly: 📊 وضعیت مورد نظر را انتخاب کنید:",
+            "📊 وضعیت مورد نظر را انتخاب کنید:",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
     elif data.startswith("status_"):
@@ -904,4 +904,129 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_ID:
-        await update.effective_message
+        await update.effective_message.reply_text("❌ دسترسی ممنوع!")
+        return
+    
+    args = context.args
+    if not args or not args[0].isdigit():
+        await update.effective_message.reply_text(
+            "⚠️ لطفاً ID کاربر را وارد کنید:\n"
+            "مثال: /remove_admin 123456789"
+        )
+        return
+    
+    admin_id_to_remove = int(args[0])
+    if admin_id_to_remove not in ADMIN_ID:
+        await update.effective_message.reply_text("⚠️ این کاربر ادمین نیست.")
+        return
+    
+    if admin_id_to_remove == update.effective_user.id:
+        await update.effective_message.reply_text("⚠️ نمی‌توانید خودتان را از ادمین‌ها حذف کنید!")
+        return
+    
+    if len(ADMIN_ID) <= 1:
+        await update.effective_message.reply_text("⚠️ نمی‌توانید آخرین ادمین را حذف کنید!")
+        return
+    
+    conn = get_db_connection()
+    try:
+        with conn:
+            conn.execute('DELETE FROM admins WHERE user_id = ?', (admin_id_to_remove,))
+        
+        ADMIN_ID.remove(admin_id_to_remove)
+        await update.effective_message.reply_text(f"✅ کاربر با ID {admin_id_to_remove} از ادمین‌ها حذف شد.")
+        
+        try:
+            await send_message_with_rate_limit(
+                context.bot,
+                admin_id_to_remove,
+                text="❌ دسترسی ادمین شما از ربات اتوگالری بلوری حذف شد."
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify removed admin {admin_id_to_remove}: {e}")
+    except sqlite3.Error as e:
+        logger.error(f"Database error in remove_admin: {e}")
+        await update.effective_message.reply_text("❌ خطایی در حذف ادمین رخ داد.")
+    finally:
+        conn.close()
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()  # پاکسازی داده‌های موقت
+    await update.effective_message.reply_text(
+        "❌ عملیات فعلی لغو شد.",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logger.error(f"Update {update} caused error {context.error}", exc_info=context.error)
+    
+    if update and update.effective_message:
+        await send_message_with_rate_limit(
+            context.bot,
+            update.effective_chat.id,
+            text="⚠️ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید."
+        )
+
+# --- تنظیمات اصلی ربات ---
+def main():
+    # مقداردهی اولیه دیتابیس
+    init_db()
+    global ADMIN_ID
+    ADMIN_ID = load_admin_ids()
+    
+    # ساخت اپلیکیشن ربات
+    application = Application.builder().token(TOKEN).build()
+    
+    # غیرفعال کردن webhook و حذف به‌روزرسانی‌های در انتظار
+    application.bot.delete_webhook(drop_pending_updates=True)
+    logger.info("✅ Webhook غیرفعال شد")
+    
+    # تنظیم هندلرهای گفتگو
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("post_ad", post_ad),
+            CallbackQueryHandler(post_ad, pattern="^post_ad$"),
+            CommandHandler("edit_info", start_edit_info),
+            CallbackQueryHandler(start_edit_info, pattern="^edit_info$"),
+        ],
+        states={
+            AD_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)],
+            AD_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)],
+            AD_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)],
+            AD_PHOTOS: [
+                MessageHandler(filters.PHOTO, receive_ad_photos),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_photos)
+            ],
+            AD_PHONE: [
+                MessageHandler(filters.CONTACT, receive_phone),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=False
+    )
+    
+    # اضافه کردن هندلرها
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(conv_handler)
+    application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
+    application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve|reject|page|status|show_photos|change_status|admin_exit|admin_panel)_"))
+    application.add_handler(CallbackQueryHandler(stats, pattern="^stats$"))
+    application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
+    application.add_handler(CommandHandler("add_admin", add_admin))
+    application.add_handler(CommandHandler("remove_admin", remove_admin))
+    application.add_handler(CommandHandler("admin", admin_panel))
+    application.add_error_handler(error_handler)
+    
+    # اجرای ربات
+    logger.info("🚀 Starting bot...")
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+        timeout=10,
+        close_loop=False
+    )
+
+if __name__ == "__main__":
+    main()
