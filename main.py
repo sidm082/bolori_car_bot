@@ -582,7 +582,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         if action == "approve":
             new_status = "approved"
-            user_message = f"✅ آگهی شما *{ad['title']}* تأیید شد و برای همه کاربران ارسال شد."
+            user_message = f"✅ آگهی شما *{ad['title']}* تأیید شد و در کانال منتشر شد."
             
             # دریافت اطلاعات کاربر برای شماره تلفن
             user_info = cursor.execute(
@@ -591,14 +591,12 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             ).fetchone()
             phone = user_info['phone'] if user_info else "ناشناس"
             
-            # فرمت محتوای آگهی
+            # فرمت محتوای آگهی برای کانال
             ad_text = (
-                f"📢 *آگهی جدید*\n\n"
-                f"📌 *عنوان*: {ad['title']}\n"
-                f"💬 *توضیحات*: {ad['description']}\n"
+                f"🚗 *{ad['title']}*\n\n"
+                f"📝 *توضیحات*: {ad['description']}\n"
                 f"💰 *قیمت*: {ad['price']} تومان\n"
-               # f"📞 *شماره تماس*: {phone}\n"
-              #  f"📅 *تاریخ*: {ad['created_at']}\n"
+                f"📞 *تماس*: {phone}\n\n"
                 f"➖➖➖➖➖\n"
                 f"☑️ *اتوگالری بلوری*\n"
                 f"▫️خرید▫️فروش▫️کارشناسی\n"
@@ -609,84 +607,73 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             # ارسال به کانال
             if ad['photos']:
                 photos = ad['photos'].split(',')
-                for photo in photos[:3]:  # حداکثر ۳ عکس به کانال
-                    if not await send_message_with_rate_limit(
-                        context.bot,
-                        CHANNEL_ID,
-                        text=ad_text,
+                # ارسال اولین عکس با کپشن
+                await context.bot.send_photo(
+                    chat_id=CHANNEL_ID,
+                    photo=photos[0],
+                    caption=ad_text,
+                    parse_mode='Markdown'
+                )
+                # ارسال عکس‌های اضافی (حداکثر 3 عکس)
+                for photo in photos[1:3]:
+                    await context.bot.send_photo(
+                        chat_id=CHANNEL_ID,
                         photo=photo
-                    ):
-                        logger.warning(f"ارسال آگهی {ad_id} به کانال ناموفق بود")
+                    )
             else:
-                if not await send_message_with_rate_limit(
-                    context.bot,
-                    CHANNEL_ID,
-                    text=ad_text
-                ):
-                    logger.warning(f"ارسال آگهی {ad_id} به کانال ناموفق بود")
+                await context.bot.send_message(
+                    chat_id=CHANNEL_ID,
+                    text=ad_text,
+                    parse_mode='Markdown'
+                )
             
-            # ارسال به همه کاربران
-            users = cursor.execute('SELECT user_id FROM users').fetchall()
-            failed_users = []
-            for user in users:
-                user_id = user['user_id']
-                try:
-                    if ad['photos']:
-                        photos = ad['photos'].split(',')
-                        for photo in photos[:3]:  # حداکثر ۳ عکس برای هر کاربر
-                            if not await send_message_with_rate_limit(
-                                context.bot,
-                                user_id,
-                                text=ad_text,
-                                photo=photo
-                            ):
-                                failed_users.append(user_id)
-                                break
-                    else:
-                        if not await send_message_with_rate_limit(
-                            context.bot,
-                            user_id,
-                            text=ad_text
-                        ):
-                            failed_users.append(user_id)
-                except Exception as e:
-                    logger.error(f"ارسال آگهی {ad_id} به کاربر {user_id} ناموفق بود: {e}")
-                    failed_users.append(user_id)
+            # به‌روزرسانی وضعیت آگهی
+            cursor.execute(
+                'UPDATE ads SET status = ? WHERE id = ?',
+                (new_status, ad_id)
+            )
+            conn.commit()
             
-            if failed_users:
-                logger.warning(f"آگهی {ad_id} برای کاربران زیر ارسال نشد: {failed_users}")
+            # اطلاع‌رسانی به کاربر
+            try:
+                await context.bot.send_message(
+                    chat_id=ad['user_id'],
+                    text=user_message,
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"خطا در اطلاع‌رسانی به کاربر {ad['user_id']}: {e}")
             
+            await query.message.reply_text(f"✅ آگهی {ad_id} تأیید و در کانال منتشر شد.")
+        
         elif action == "reject":
             new_status = "rejected"
             user_message = f"❌ آگهی شما *{ad['title']}* رد شد."
-        else:
-            return
-        
-        # به‌روزرسانی وضعیت آگهی
-        cursor.execute(
-            'UPDATE ads SET status = ? WHERE id = ?',
-            (new_status, ad_id)
-        )
-        conn.commit()
-        
-        # اطلاع‌رسانی به کاربری که آگهی را ثبت کرده
-        try:
-            await send_message_with_rate_limit(
-                context.bot,
-                ad['user_id'],
-                text=user_message
+            
+            cursor.execute(
+                'UPDATE ads SET status = ? WHERE id = ?',
+                (new_status, ad_id)
             )
-        except Exception as e:
-            logger.error(f"اطلاع‌رسانی به کاربر {ad['user_id']} ناموفق بود: {e}")
+            conn.commit()
+            
+            try:
+                await context.bot.send_message(
+                    chat_id=ad['user_id'],
+                    text=user_message,
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"خطا در اطلاع‌رسانی به کاربر {ad['user_id']}: {e}")
+            
+            await query.message.reply_text(f"❌ آگهی {ad_id} رد شد.")
         
-        await query.message.reply_text(f"وضعیت آگهی {ad_id} به *{new_status}* تغییر کرد.")
         await admin_panel(update, context)
+    
     except sqlite3.Error as e:
         logger.error(f"خطای پایگاه داده در handle_admin_action: {e}")
         await query.message.reply_text("❌ خطایی در پردازش درخواست رخ داد.")
     finally:
         conn.close()
-
 async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -965,24 +952,35 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         conn.close()
 
+async def admin_navigation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data.startswith("page_"):
+        page = int(query.data.split('_')[1])
+        context.user_data['admin_page'] = page
+        await admin_panel(update, context)
+    elif query.data == "admin_exit":
+        await start(update, context)
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear()  # پاک کردن داده‌های موقت
+    context.user_data.clear()
     await update.effective_message.reply_text(
-        "❌ عملیات جاری Foul شد.",
+        "❌ عملیات فعلی لغو شد.",
         reply_markup=ReplyKeyboardRemove()
     )
     return ConversationHandler.END
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logger.error(f"به‌روزرسانی {update} باعث خطای {context.error} شد", exc_info=context.error)
+    logger.error(f"خطا در پردازش به‌روزرسانی {update}: {context.error}", exc_info=context.error)
     
     if update and update.effective_message:
-        await send_message_with_rate_limit(
-            context.bot,
-            update.effective_chat.id,
-            text="⚠️ خطایی در پردازش درخواست شما رخ داد، لطفاً دوباره تلاش کنید."
-        )
-
+        try:
+            await update.effective_message.reply_text(
+                "⚠️ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید."
+            )
+        except Exception:
+            pass
 # --- تنظیمات اصلی ربات ---
 if __name__ == "__main__":
     # مقداردهی اولیه پایگاه داده
@@ -993,17 +991,15 @@ if __name__ == "__main__":
     # ایجاد برنامه ربات
     application = Application.builder().token(TOKEN).build()
     
-    # غیرفعال کردن وب‌هوک و پاک کردن به‌روزرسانی‌های در انتظار
+    # غیرفعال کردن وب‌هوک
     asyncio.get_event_loop().run_until_complete(application.bot.delete_webhook(drop_pending_updates=True))
-    logger.info("✅ وب‌هوک غیرفعال شد")
+    logger.info("✅ ربات در حال راه‌اندازی...")
     
     # تنظیم هندلر گفت‌وگو
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("post_ad", post_ad),
             CallbackQueryHandler(post_ad, pattern="^post_ad$"),
-            CommandHandler("edit_info", start_edit_info),
-            CallbackQueryHandler(start_edit_info, pattern="^edit_info$"),
         ],
         states={
             AD_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)],
@@ -1026,28 +1022,16 @@ if __name__ == "__main__":
     application.add_handler(CommandHandler("start", start))
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
-    application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve|reject|page|status|show_photos|change_status|admin_exit|admin_panel)_"))
-    application.add_handler(CallbackQueryHandler(stats, pattern="^stats$"))
-    application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
+    application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
+    application.add_handler(CallbackQueryHandler(handle_admin_action, pattern="^(approve|reject)_"))
+    application.add_handler(CallbackQueryHandler(show_ad_photos, pattern="^show_photos_"))
+    application.add_handler(CallbackQueryHandler(change_status_filter, pattern="^(change_status|status_)"))
+    application.add_handler(CallbackQueryHandler(admin_navigation, pattern="^(page_|admin_exit)"))
+    application.add_handler(CommandHandler("admin", admin_panel))
     application.add_handler(CommandHandler("add_admin", add_admin))
     application.add_handler(CommandHandler("remove_admin", remove_admin))
-    application.add_handler(CommandHandler("admin", admin_panel))
     application.add_error_handler(error_handler)
     
-    # مقداردهی اولیه و راه‌اندازی ربات
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(application.initialize())
-        logger.info("🚀 راه‌اندازی ربات...")
-        loop.run_until_complete(
-            application.run_polling(
-                allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True,
-                timeout=10,
-                close_loop=False
-            )
-        )
-    finally:
-        loop.run_until_complete(application.shutdown())
-        if not loop.is_closed():
-            loop.close()
+    # راه‌اندازی ربات
+    logger.info("🤖 ربات آماده به کار است...")
+    application.run_polling()
