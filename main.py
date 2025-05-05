@@ -411,7 +411,7 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.effective_message.reply_text(
             "با تشکر از اعتماد شما. ✅ آگهی با موفقیت ثبت شد و در انتظار تأیید مدیر است.\n"
-            "می‌توانید از منوی اصلی برای ثبت آگهی جدید ادامه دهید."
+            "می‌توانید از منوی اصلی برای ثبت آگه COMMISSIONی جدید ادامه دهید."
         )
         context.user_data.clear()  # پاک کردن داده‌های موقت
         return ConversationHandler.END
@@ -1019,7 +1019,7 @@ async def main():
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=True
+        per_message=False
     )
     
     # افزودن هندلرها
@@ -1044,4 +1044,8 @@ async def main():
     )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        loop.create_task(main())
+    else:
+        loop.run_until_complete(main())
