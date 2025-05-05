@@ -397,94 +397,6 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ad_id = cursor.lastrowid
         
         for admin_id in ADMIN_ID:
-            try:
-                await send_message_with_rate_limit(
-那样，好的，我会帮你检查代码并确保广播功能正确工作，同时优化 `handle_admin_action` 函数中的广播逻辑，增加错误处理和速率限制。以下是更新后的完整代码，重点优化了 `handle_admin_action` 函数，确保在确认广告后将其广播给所有用户，并验证其功能是否正常。
-
-<xaiArtifact artifact_id="9de09a46-dc7d-4959-83be-79e5a01b4c69" artifact_version_id="08eb0f9f-dd3a-468c-9a54-8bcdf8d4e510" title="telegram_bot.py" contentType="text/python">
-import os
-import sqlite3
-import logging
-import asyncio
-import re
-from datetime import datetime, timedelta
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    filters,
-    CallbackQueryHandler,
-    ConversationHandler,
-    ContextTypes
-)
-from dotenv import load_dotenv
-
-# 设置日志
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# 加载环境变量
-load_dotenv()
-
-# 从环境变量读取 Token
-TOKEN = os.getenv('BOT_TOKEN')
-if not TOKEN:
-    logger.error("BOT_TOKEN not found in .env file")
-    raise ValueError("请在 .env 文件中设置机器人 Token。详情请查看文档。")
-
-# 频道设置
-CHANNEL_URL = "https://t.me/bolori_car"
-CHANNEL_ID = "@bolori_car"
-CHANNEL_USERNAME = "bolori_car"
-
-# 对话状态
-AD_TITLE, AD_DESCRIPTION, AD_PRICE, AD_PHOTOS, AD_PHONE = range(5)
-
-# --- 数据库相关函数 ---
-def get_db_connection():
-    conn = sqlite3.connect('bot.db', check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_db():
-    conn = get_db_connection()
-    try:
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS users
-                    (user_id INTEGER PRIMARY KEY, 
-                     joined TEXT, 
-                     phone TEXT)''')
-        
-        c.execute('''CREATE TABLE IF NOT EXISTS ads
-                    (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                     user_id INTEGER,
-                     title TEXT,
-                     description TEXT,
-                     price TEXT,
-                     photos TEXT,
-                     status TEXT DEFAULT 'pending',
-                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                     FOREIGN KEY(user_id) REFERENCES users(user_id))''')
-        
-        c.execute('''CREATE TABLE IF NOT EXISTS admins
-                    (user_id INTEGER PRIMARY KEY)''')
-        
-        # 创建索引以提高性能
-        c.execute('CREATE INDEX IF NOT EXISTS idx_ads_status ON ads(status)')
-        c.execute('CREATE INDEX IF NOT EXISTS idx_ads_user_id ON ads(user_id)')
-        c.execute('CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)')
-        
-        # 默认管理员
-        initial_admin_id = 5677216420
-        c.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (initial_admin_id,))
-        conn.commit()
-    finally:
-        conn.close()
-
 def load_admin_ids():
     conn = get_db_connection()
     try:
@@ -985,48 +897,48 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             new_status = "approved"
             user_message = f"✅ 您的广告 *{ad['title']}* 已通过审核并发送给所有用户。"
             
-            # 获取用户信息以获取电话号码
+            # Get user info for phone number
             user_info = cursor.execute(
                 'SELECT phone FROM users WHERE user_id = ?', 
                 (ad['user_id'],)
             ).fetchone()
-            phone = user_info['phone'] if user_info else "未知"
+            phone = user_info['phone'] if user_info else "Unknown"
             
-            # 格式化广告内容
+            # Format the ad content
             ad_text = (
-                f"📢 *新广告已通过审核*\n\n"
-                f"📌 *标题*：{ad['title']}\n"
-                f"💬 *描述*：{ad['description']}\n"
-                f"💰 *价格*：{ad['price']} 托曼\n"
-                f"📞 *联系电话*：{phone}\n"
-                f"📅 *日期*：{ad['created_at']}\n"
+                f"📢 *新广告*\n\n"
+                f"📌 *标题*: {ad['title']}\n"
+                f"💬 *描述*: {ad['description']}\n"
+                f"💰 *价格*: {ad['price']} تومان\n"
+                f"📞 *联系电话*: {phone}\n"
+                f"📅 *日期*: {ad['created_at']}\n"
                 f"➖➖➖➖➖\n"
-                f"☑️ *博洛里汽车画廊*\n"
-                f"▫️购买▫️销售▫️专业评估\n"
+                f"☑️ *اتوگالری بلوری*\n"
+                f"▫️خرید▫️فروش▫️کارشناسی\n"
                 f"📲 +989153632957\n"
                 f"📍 @{CHANNEL_USERNAME}"
             )
             
-            # 发送到频道
+            # Send to channel
             if ad['photos']:
                 photos = ad['photos'].split(',')
-                for photo in photos[:3]:  # 频道最多发送3张图片
+                for photo in photos[:3]:  # Send max 3 photos to channel
                     if not await send_message_with_rate_limit(
                         context.bot,
                         CHANNEL_ID,
                         text=ad_text,
                         photo=photo
                     ):
-                        logger.warning(f"发送广告 {ad_id} 到频道失败")
+                        logger.warning(f"Failed to send ad {ad_id} to channel")
             else:
                 if not await send_message_with_rate_limit(
                     context.bot,
                     CHANNEL_ID,
                     text=ad_text
                 ):
-                    logger.warning(f"发送广告 {ad_id} 到频道失败")
+                    logger.warning(f"Failed to send ad {ad_id} to channel")
             
-            # 广播给所有用户
+            # Broadcast to all users
             users = cursor.execute('SELECT user_id FROM users').fetchall()
             failed_users = []
             for user in users:
@@ -1034,7 +946,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                 try:
                     if ad['photos']:
                         photos = ad['photos'].split(',')
-                        for photo in photos[:3]:  # 每用户最多3张图片
+                        for photo in photos[:3]:  # Send max 3 photos per user
                             if not await send_message_with_rate_limit(
                                 context.bot,
                                 user_id,
@@ -1051,11 +963,11 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                         ):
                             failed_users.append(user_id)
                 except Exception as e:
-                    logger.error(f"发送广告 {ad_id} 到用户 {user_id} 失败: {e}")
+                    logger.error(f"Failed to send ad {ad_id} to user {user_id}: {e}")
                     failed_users.append(user_id)
             
             if failed_users:
-                logger.warning(f"广告 {ad_id} 发送失败的用户: {failed_users}")
+                logger.warning(f"Ad {ad_id} failed to send to users: {failed_users}")
             
         elif action == "reject":
             new_status = "rejected"
@@ -1063,14 +975,14 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             return
         
-        # 更新广告状态
+        # Update ad status
         cursor.execute(
             'UPDATE ads SET status = ? WHERE id = ?',
             (new_status, ad_id)
         )
         conn.commit()
         
-        # 通知广告提交用户
+        # Notify the user who submitted the ad
         try:
             await send_message_with_rate_limit(
                 context.bot,
@@ -1078,12 +990,12 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                 text=user_message
             )
         except Exception as e:
-            logger.error(f"通知用户 {ad['user_id']} 失败: {e}")
+            logger.error(f"Failed to notify user {ad['user_id']}: {e}")
         
         await query.message.reply_text(f"广告 {ad_id} 的状态已更改为 *{new_status}*。")
         await admin_panel(update, context)
     except sqlite3.Error as e:
-        logger.error(f"数据库错误（handle_admin_action）: {e}")
+        logger.error(f"Database error in handle_admin_action: {e}")
         await query.message.reply_text("❌ 处理请求时出错。")
     finally:
         conn.close()
