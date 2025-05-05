@@ -1051,12 +1051,4 @@ async def main():
         await application.shutdown()
 
 if __name__ == "__main__":
-    try:
-        # اجرای تابع main در حلقه رویداد موجود
-        loop = asyncio.get_running_loop()
-        loop.create_task(main())
-    except RuntimeError:
-        # اگر حلقه رویداد فعال نیست، یک حلقه جدید ایجاد می‌کنیم
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(main())
+    asyncio.run(main())
