@@ -767,6 +767,15 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         conn.close()
 
+def clean_text(text):
+    if not text:
+        return text
+    # حذف کاراکترهای خاص که با Markdown تداخل دارند
+    text = re.sub(r'[_*[\]()~`>#+-=|{}.!]', '', text)
+    # حذف فاصله‌های اضافی
+    text = ' '.join(text.split())
+    return text
+
 async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -793,45 +802,54 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         if action == "approve":
             new_status = "approved"
-            user_message = f"✅ آگهی شما *{ad['title']}* تأیید شد و در کانال منتشر شد."
+            user_message = f"✅ آگهی شما *{clean_text(ad['title'])}* تأیید شد و در کانال منتشر شد."
             
             user_info = cursor.execute(
                 'SELECT phone FROM users WHERE user_id = ?', 
                 (ad['user_id'],)
             ).fetchone()
-            phone = user_info['phone'] if user_info else "ناشناس"
+            phone = clean_text(user_info['phone'] if user_info else "ناشناس")
+            
+            # پاکسازی فیلدها برای جلوگیری از خطاهای Markdown
+            title = clean_text(ad['title'])
+            description = clean_text(ad['description'])
+            price = clean_text(ad['price'])
             
             ad_text = (
-                f"🚗 *{ad['title']}*\n\n"
-                f"📝 *توضیحات*: {ad['description']}\n"
-                f"💰 *قیمت*: {ad['price']} تومان\n"
-                f"📞 *تماس*: {phone}\n\n"
+                f"🚗 {title}\n\n"
+                f"📝 توضیحات: {description}\n"
+                f"💰 قیمت: {price} تومان\n"
+                f"📞 تماس: {phone}\n\n"
                 f"➖➖➖➖➖\n"
-                f"☑️ *اتوگالری بلوری*\n"
+                f"☑️ اتوگالری بلوری\n"
                 f"▫️خرید▫️فروش▫️کارشناسی\n"
                 f"📲 +989153632957\n"
                 f"📍 @{CHANNEL_USERNAME}"
             )
             
-            if ad['photos']:
-                photos = ad['photos'].split(',')
-                await context.bot.send_photo(
-                    chat_id=CHANNEL_ID,
-                    photo=photos[0],
-                    caption=ad_text,
-                    parse_mode='Markdown'
-                )
-                for photo in photos[1:3]:
+            try:
+                if ad['photos']:
+                    photos = ad['photos'].split(',')
+                    # ارسال پیام بدون parse_mode برای جلوگیری از خطاهای تجزیه
                     await context.bot.send_photo(
                         chat_id=CHANNEL_ID,
-                        photo=photo
+                        photo=photos[0],
+                        caption=ad_text
                     )
-            else:
-                await context.bot.send_message(
-                    chat_id=CHANNEL_ID,
-                    text=ad_text,
-                    parse_mode='Markdown'
-                )
+                    for photo in photos[1:3]:
+                        await context.bot.send_photo(
+                            chat_id=CHANNEL_ID,
+                            photo=photo
+                        )
+                else:
+                    await context.bot.send_message(
+                        chat_id=CHANNEL_ID,
+                        text=ad_text
+                    )
+            except TelegramError as e:
+                logger.error(f"خطا در ارسال آگهی به کانال: {e}")
+                await query.message.reply_text("❌ خطایی در انتشار آگهی در کانال رخ داد.")
+                return
             
             cursor.execute(
                 'UPDATE ads SET status = ? WHERE id = ?',
@@ -852,7 +870,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         elif action == "reject":
             new_status = "rejected"
-            user_message = f"❌ آگهی شما *{ad['title']}* رد شد."
+            user_message = f"❌ آگهی شما *{clean_text(ad['title'])}* رد شد."
             
             cursor.execute(
                 'UPDATE ads SET status = ? WHERE id = ?',
@@ -878,7 +896,6 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.message.reply_text("❌ خطایی در پردازش درخواست رخ داد.")
     finally:
         conn.close()
-
 async def change_status_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
