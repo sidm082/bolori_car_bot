@@ -981,17 +981,17 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception:
             pass
-            async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-                query = update.callback_query
-                await query.answer()
+async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
     
-                ad_id = int(query.data.split('_')[2])
-                conn = get_db_connection()
-                try:
-                    ad = conn.execute(
-                    'SELECT photos FROM ads WHERE id = ?', 
-                    (ad_id,)
-                    ).fetchone()
+    ad_id = int(query.data.split('_')[2])
+    conn = get_db_connection()
+    try:
+        ad = conn.execute(
+            'SELECT photos FROM ads WHERE id = ?', 
+            (ad_id,)
+        ).fetchone()
         
         if not ad or not ad['photos']:
             await query.message.reply_text("این آگهی عکسی ندارد!")
