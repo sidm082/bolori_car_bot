@@ -981,6 +981,33 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception:
             pass
+            async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    ad_id = int(query.data.split('_')[2])
+    conn = get_db_connection()
+    try:
+        ad = conn.execute(
+            'SELECT photos FROM ads WHERE id = ?', 
+            (ad_id,)
+        ).fetchone()
+        
+        if not ad or not ad['photos']:
+            await query.message.reply_text("این آگهی عکسی ندارد!")
+            return
+        
+        photos = ad['photos'].split(',')
+        for photo in photos[:5]:  # حداکثر 5 عکس نمایش داده شود
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=photo
+            )
+    except Exception as e:
+        logger.error(f"خطا در نمایش تصاویر آگهی {ad_id}: {e}")
+        await query.message.reply_text("❌ خطایی در نمایش تصاویر رخ داد.")
+    finally:
+        conn.close()
 # --- تنظیمات اصلی ربات ---
 if __name__ == "__main__":
     # مقداردهی اولیه پایگاه داده
