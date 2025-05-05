@@ -968,7 +968,7 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()  # پاک کردن داده‌های موقت
     await update.effective_message.reply_text(
-        "❌ عملیات جاری لغو شد.",
+        "❌ عملیات جاری Foul شد.",
         reply_markup=ReplyKeyboardRemove()
     )
     return ConversationHandler.END
@@ -984,7 +984,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # --- تنظیمات اصلی ربات ---
-async def main():
+if __name__ == "__main__":
     # مقداردهی اولیه پایگاه داده
     init_db()
     global ADMIN_ID
@@ -994,7 +994,7 @@ async def main():
     application = Application.builder().token(TOKEN).build()
     
     # غیرفعال کردن وب‌هوک و پاک کردن به‌روزرسانی‌های در انتظار
-    await application.bot.delete_webhook(drop_pending_updates=True)
+    asyncio.get_event_loop().run_until_complete(application.bot.delete_webhook(drop_pending_updates=True))
     logger.info("✅ وب‌هوک غیرفعال شد")
     
     # تنظیم هندلر گفت‌وگو
@@ -1034,21 +1034,20 @@ async def main():
     application.add_handler(CommandHandler("admin", admin_panel))
     application.add_error_handler(error_handler)
     
-    # مقداردهی اولیه برنامه
-    await application.initialize()
-    
-    # راه‌اندازی ربات
-    logger.info("🚀 راه‌اندازی ربات...")
+    # مقداردهی اولیه و راه‌اندازی ربات
+    loop = asyncio.get_event_loop()
     try:
-        await application.run_polling(
-            allowed_updates=Update.ALL_TYPES,
-            drop_pending_updates=True,
-            timeout=10,
-            close_loop=False
+        loop.run_until_complete(application.initialize())
+        logger.info("🚀 راه‌اندازی ربات...")
+        loop.run_until_complete(
+            application.run_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True,
+                timeout=10,
+                close_loop=False
+            )
         )
     finally:
-        # اطمینان از خاموش شدن صحیح
-        await application.shutdown()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        loop.run_until_complete(application.shutdown())
+        if not loop.is_closed():
+            loop.close()
