@@ -235,7 +235,7 @@ async def start_edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AD_PHONE
     except sqlite3.Error as e:
         logger.error(f"خطای پایگاه داده در start_edit_info: {e}")
-        await channels.reply_text("❌ خطایی در بررسی اطلاعات رخ داد.")
+        await message.reply_text("❌ خطایی در بررسی اطلاعات رخ داد.")
         return ConversationHandler.END
     finally:
         conn.close()
@@ -1304,7 +1304,9 @@ if __name__ == "__main__":
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), receive_phone))
     application.add_handler(CallbackQueryHandler(show_ad_photos, pattern="^show_photos_"))
-    application.add_handler(error_handler)
+    
+    # افزودن هندلر خطا
+    application.add_error_handler(error_handler)
     
     # راه‌اندازی ربات
     logger.info("🤖 ربات آماده به کار است...")
