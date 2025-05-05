@@ -28,9 +28,13 @@ logger = logging.getLogger(__name__)
 # بارگذاری متغیرهای محیطی
 load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 if not TOKEN:
     logger.error("BOT_TOKEN not found in .env file")
     raise ValueError("لطفاً توکن ربات را در فایل .env تنظیم کنید.")
+if not WEBHOOK_URL:
+    logger.error("WEBHOOK_URL not found in .env file")
+    raise ValueError("لطفاً URL وب‌هوک را در فایل .env تنظیم کنید.")
 
 # تنظیمات کانال
 CHANNEL_URL = "https://t.me/bolori_car"
@@ -95,20 +99,33 @@ def update_admin_ids():
     global ADMIN_ID
     ADMIN_ID = load_admin_ids()
 
+# --- تابع پاکسازی متن ---
+def clean_text(text):
+    if not text:
+        return text
+    text = re.sub(r'[_*[\]()~`>#+-=|{}.!]', '', text)
+    text = ' '.join(text.split())
+    return text
+
 # --- تابع کمکی برای مدیریت نرخ ارسال ---
-async def send_message_with_rate_limit(bot, chat_id, text=None, photo=None, reply_markup=None):
+async def send_message_with_rate_limit(bot, chat_id, text=None, photo=None, reply_markup=None, parse_mode=None):
     max_retries = 3
     for attempt in range(max_retries):
         try:
             if photo:
                 await bot.send_photo(
-                    chat_id=chat_id, photo=photo, caption=text, 
-                    reply_markup=reply_markup, parse_mode='Markdown'
+                    chat_id=chat_id, 
+                    photo=photo, 
+                    caption=text, 
+                    reply_markup=reply_markup, 
+                    parse_mode=parse_mode
                 )
             else:
                 await bot.send_message(
-                    chat_id=chat_id, text=text, 
-                    reply_markup=reply_markup, parse_mode='Markdown'
+                    chat_id=chat_id, 
+                    text=text, 
+                    reply_markup=reply_markup, 
+                    parse_mode=parse_mode
                 )
             await asyncio.sleep(0.5)
             return True
@@ -550,7 +567,6 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (user_id, cleaned_phone)
             )
         
-        # بررسی اینکه آیا کاربر در حال ثبت آگهی است یا فقط شماره را به‌روزرسانی می‌کند
         if 'ad' not in context.user_data or not context.user_data['ad']:
             await update.effective_message.reply_text(
                 "✅ شماره تلفن با موفقیت به‌روزرسانی شد.",
@@ -558,7 +574,6 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return ConversationHandler.END
         
-        # بررسی کامل بودن داده‌های آگهی
         ad = context.user_data['ad']
         required_fields = ['title', 'description', 'price']
         missing_fields = [field for field in required_fields if field not in ad]
@@ -615,7 +630,8 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await send_message_with_rate_limit(
                     context.bot,
                     admin_id,
-                    text=f"📢 آگهی جدید ثبت شد:\nعنوان: {ad['title']}\nشناسه: {ad_id}\nلطفاً در پنل مدیریت بررسی کنید."
+                    text=f"📢 آگهی جدید ثبت شد:\nعنوان: {clean_text(ad['title'])}\nشناسه: {ad_id}\nلطفاً در پنل مدیریت بررسی کنید.",
+                    parse_mode='Markdown'
                 )
             except Exception as e:
                 logger.error(f"خطا در اطلاع‌رسانی به ادمین {admin_id}: {e}")
@@ -703,10 +719,10 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ad_text = (
                 f"🆔 آگهی: {ad['id']}\n"
                 f"👤 کاربر: {username}\n"
-                f"📞 شماره: {phone}\n"
-                f"📌 عنوان: {ad['title']}\n"
-                f"💬 توضیحات: {ad['description']}\n"
-                f"💰 قیمت: {ad['price']}\n"
+                f"📞 شماره: {clean_text(phone)}\n"
+                f"📌 عنوان: {clean_text(ad['title'])}\n"
+                f"💬 توضیحات: {clean_text(ad['description'])}\n"
+                f"💰 قیمت: {clean_text(ad['price'])}\n"
                 f"📅 تاریخ: {ad['created_at']}\n"
                 f"📸 تصاویر: {'دارد' if ad['photos'] else 'ندارد'}\n"
                 f"📊 وضعیت: {ad['status']}"
@@ -722,20 +738,21 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             if ad['photos']:
                 photos = ad['photos'].split(',')
-                for photo in photos[:5]:
-                    await send_message_with_rate_limit(
-                        context.bot,
-                        update.effective_chat.id,
-                        text=ad_text,
-                        photo=photo,
-                        reply_markup=InlineKeyboardMarkup(buttons)
-                    )
+                await send_message_with_rate_limit(
+                    context.bot,
+                    update.effective_chat.id,
+                    text=ad_text,
+                    photo=photos[0],
+                    reply_markup=InlineKeyboardMarkup(buttons),
+                    parse_mode='Markdown'
+                )
             else:
                 await send_message_with_rate_limit(
                     context.bot,
                     update.effective_chat.id,
                     text=ad_text,
-                    reply_markup=InlineKeyboardMarkup(buttons)
+                    reply_markup=InlineKeyboardMarkup(buttons),
+                    parse_mode='Markdown'
                 )
         
         nav_buttons = []
@@ -755,7 +772,8 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     [InlineKeyboardButton("🔄 تغییر وضعیت", callback_data="change_status")],
                     [InlineKeyboardButton("🏠 بازگشت", callback_data="admin_exit")]
                 ]
-            )
+            ),
+            parse_mode='Markdown'
         )
     except Exception as e:
         logger.error(f"خطا در پنل مدیریت: {e}")
@@ -766,15 +784,6 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     finally:
         conn.close()
-
-def clean_text(text):
-    if not text:
-        return text
-    # حذف کاراکترهای خاص که با Markdown تداخل دارند
-    text = re.sub(r'[_*[\]()~`>#+-=|{}.!]', '', text)
-    # حذف فاصله‌های اضافی
-    text = ' '.join(text.split())
-    return text
 
 async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -810,7 +819,6 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             ).fetchone()
             phone = clean_text(user_info['phone'] if user_info else "ناشناس")
             
-            # پاکسازی فیلدها برای جلوگیری از خطاهای Markdown
             title = clean_text(ad['title'])
             description = clean_text(ad['description'])
             price = clean_text(ad['price'])
@@ -830,7 +838,6 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             try:
                 if ad['photos']:
                     photos = ad['photos'].split(',')
-                    # ارسال پیام بدون parse_mode برای جلوگیری از خطاهای تجزیه
                     await context.bot.send_photo(
                         chat_id=CHANNEL_ID,
                         photo=photos[0],
@@ -896,6 +903,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.message.reply_text("❌ خطایی در پردازش درخواست رخ داد.")
     finally:
         conn.close()
+
 async def change_status_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1003,12 +1011,12 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'SELECT phone FROM users WHERE user_id = ?', 
                 (ad['user_id'],)
             ).fetchone()
-            phone = user_info['phone'] if user_info else "ناشناس"
+            phone = clean_text(user_info['phone'] if user_info else "ناشناس")
             
             text = (
-                f"📌 *عنوان*: {ad['title']}\n"
-                f"💬 *توضیحات*: {ad['description']}\n"
-                f"💰 *قیمت*: {ad['price']} تومان\n"
+                f"📌 *عنوان*: {clean_text(ad['title'])}\n"
+                f"💬 *توضیحات*: {clean_text(ad['description'])}\n"
+                f"💰 *قیمت*: {clean_text(ad['price'])} تومان\n"
                 f"📞 *شماره تماس*: {phone}\n"
                 f"📅 *تاریخ*: {ad['created_at']}"
             )
@@ -1021,13 +1029,15 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             context.bot,
                             update.effective_chat.id,
                             text=text,
-                            photo=photo
+                            photo=photo,
+                            parse_mode='Markdown'
                         )
                 else:
                     await send_message_with_rate_limit(
                         context.bot,
                         update.effective_chat.id,
-                        text=text
+                        text=text,
+                        parse_mode='Markdown'
                     )
             except Exception as e:
                 logger.error(f"ارسال آگهی {ad['id']} ناموفق بود: {e}")
@@ -1085,7 +1095,8 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_message_with_rate_limit(
             context.bot,
             update.effective_chat.id,
-            text=stats_text
+            text=stats_text,
+            parse_mode='Markdown'
         )
     except sqlite3.Error as e:
         logger.error(f"خطای پایگاه داده در stats: {e}")
@@ -1127,7 +1138,8 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.bot,
                 new_admin_id,
                 text=f"🎉 شما به عنوان مدیر ربات اتوگالری بلوری منصوب شدید!\n"
-                     f"برای دسترسی به پنل مدیریت از دستور /admin استفاده کنید."
+                     f"برای دسترسی به پنل مدیریت از دستور /admin استفاده کنید.",
+                parse_mode='Markdown'
             )
         except Exception as e:
             logger.error(f"اطلاع‌رسانی به مدیر جدید {new_admin_id} ناموفق بود: {e}")
@@ -1174,7 +1186,8 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send_message_with_rate_limit(
                 context.bot,
                 admin_id_to_remove,
-                text="❌ دسترسی مدیریت شما برای ربات اتوگالری بلوری لغو شد."
+                text="❌ دسترسی مدیریت شما برای ربات اتوگالری بلوری لغو شد.",
+                parse_mode='Markdown'
             )
         except Exception as e:
             logger.error(f"اطلاع‌رسانی به مدیر حذف‌شده {admin_id_to_remove} ناموفق بود: {e}")
@@ -1254,7 +1267,7 @@ async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
 # --- تنظیمات اصلی ربات ---
-if __name__ == "__main__":
+async def main():
     # مقداردهی اولیه پایگاه داده
     init_db()
     global ADMIN_ID
@@ -1263,9 +1276,9 @@ if __name__ == "__main__":
     # ایجاد برنامه ربات
     application = Application.builder().token(TOKEN).build()
     
-    # غیرفعال کردن وب‌هوک
-    asyncio.get_event_loop().run_until_complete(application.bot.delete_webhook(drop_pending_updates=True))
-    logger.info("✅ ربات در حال راه‌اندازی...")
+    # تنظیم وب‌هوک
+    await application.bot.set_webhook(url=WEBHOOK_URL)
+    logger.info(f"🤖 وب‌هوک تنظیم شد: {WEBHOOK_URL}")
     
     # تنظیم هندلر گفت‌وگو برای ثبت آگهی
     conv_handler = ConversationHandler(
@@ -1325,6 +1338,13 @@ if __name__ == "__main__":
     # افزودن هندلر خطا
     application.add_error_handler(error_handler)
     
-    # راه‌اندازی ربات
-    logger.info("🤖 ربات آماده به کار است...")
-    application.run_polling()
+    # راه‌اندازی سرور وب‌هوک
+    await application.run_webhook(
+        listen="0.0.0.0",
+        port=8443,
+        url_path="/webhook",
+        webhook_url=WEBHOOK_URL
+    )
+
+if __name__ == "__main__":
+    asyncio.run(main())
