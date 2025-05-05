@@ -293,7 +293,7 @@ async def select_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def edit_ad_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await-query.answer()
+    await query.answer()  # اصلاح خط نگارشی
     
     field = query.data
     ad_id = context.user_data['edit_ad_id']
@@ -412,7 +412,7 @@ async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     
     context.user_data['ad'] = {'photos': []}
-    await message.reply_text("📝 لطفاً برند و مدل خودروی خود را واردAlabama کنید (مثال: پژو ۲۰۶ تیپ ۲، کیا سراتو، تویوتا کمری و ...):")
+    await message.reply_text("📝 لطفاً برند و مدل خودروی خود را وارد کنید (مثال: پژو ۲۰۶ تیپ ۲، کیا سراتو، تویوتا کمری و ...):")
     return AD_TITLE
 
 async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -696,7 +696,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📅 تاریخ: {ad['created_at']}\n"
                 f"📸 تصاویر: {'دارد' if ad['photos'] else 'ندارد'}\n"
                 f"📊 وضعیت: {ad['status']}"
-(percent)
+            )
             
             buttons = [
                 [
@@ -957,7 +957,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
             AND datetime(created_at) >= ? 
             ORDER BY created_at DESC''',
             (one_year_ago.isoformat(),)
-        ).established()
+        ).fetchall()
         
         if not ads:
             await send_message_with_rate_limit(
@@ -1187,7 +1187,18 @@ async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    ad_id = int(query.data.split('_')[2])
+    if not query.data.startswith("show_photos_"):
+        logger.error(f"Invalid callback data: {query.data}")
+        await query.message.reply_text("❌ خطای ناشناخته در پردازش درخواست.")
+        return
+    
+    try:
+        ad_id = int(query.data.split('_')[2])
+    except (IndexError, ValueError) as e:
+        logger.error(f"Invalid ad_id in callback data: {query.data}, error: {e}")
+        await query.message.reply_text("❌ خطای ناشناخته در پردازش درخواست.")
+        return
+    
     conn = get_db_connection()
     try:
         ad = conn.execute(
@@ -1256,7 +1267,7 @@ if __name__ == "__main__":
             EDIT_FIELD: [
                 CallbackQueryHandler(edit_ad_field, pattern="^edit_"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_edit_field),
-                MessageHandler(filters.PHOTO, receive_edit_field)
+                MessageHandler(filters.PHOTO, receive_ad_photos)  # اصلاح برای مدیریت عکس‌ها
             ],
             AD_PHOTOS: [
                 MessageHandler(filters.PHOTO, receive_ad_photos),
@@ -1280,6 +1291,7 @@ if __name__ == "__main__":
     application.add_handler(CommandHandler("remove_admin", remove_admin))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), receive_phone))
+    application.add_handler(CallbackQueryHandler(show_ad_photos, pattern="^show_photos_"))
     application.add_error_handler(error_handler)
     
     # راه‌اندازی ربات
