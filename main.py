@@ -235,7 +235,7 @@ async def start_edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AD_PHONE
     except sqlite3.Error as e:
         logger.error(f"خطای پایگاه داده در start_edit_info: {e}")
-        await message.reply_text("❌ خطایی در بررسی اطلاعات رخ داد.")
+        await channels.reply_text("❌ خطایی در بررسی اطلاعات رخ داد.")
         return ConversationHandler.END
     finally:
         conn.close()
@@ -293,7 +293,7 @@ async def select_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def edit_ad_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # اصلاح خط نگارشی
+    await query.answer()
     
     field = query.data
     ad_id = context.user_data['edit_ad_id']
@@ -550,19 +550,33 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (user_id, cleaned_phone)
             )
         
-        if 'ad' in context.user_data and context.user_data['ad']:
-            context.user_data['ad']['phone'] = cleaned_phone
-            await update.effective_message.reply_text(
-                "✅ شماره تلفن با موفقیت ثبت شد. آگهی شما در حال ارسال برای تأیید است...",
-                reply_markup=ReplyKeyboardRemove()
-            )
-            return await save_ad(update, context)
-        else:
+        # بررسی اینکه آیا کاربر در حال ثبت آگهی است یا فقط شماره را به‌روزرسانی می‌کند
+        if 'ad' not in context.user_data or not context.user_data['ad']:
             await update.effective_message.reply_text(
                 "✅ شماره تلفن با موفقیت به‌روزرسانی شد.",
                 reply_markup=ReplyKeyboardRemove()
             )
             return ConversationHandler.END
+        
+        # بررسی کامل بودن داده‌های آگهی
+        ad = context.user_data['ad']
+        required_fields = ['title', 'description', 'price']
+        missing_fields = [field for field in required_fields if field not in ad]
+        
+        if missing_fields:
+            logger.warning(f"Missing fields in ad data for user {user_id}: {missing_fields}")
+            await update.effective_message.reply_text(
+                "⚠️ لطفاً ابتدا اطلاعات آگهی (عنوان، توضیحات، قیمت) را وارد کنید. از منوی اصلی گزینه 'ثبت آگهی' را انتخاب کنید.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return ConversationHandler.END
+        
+        context.user_data['ad']['phone'] = cleaned_phone
+        await update.effective_message.reply_text(
+            "✅ شماره تلفن با موفقیت ثبت شد. آگهی شما در حال ارسال برای تأیید است...",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return await save_ad(update, context)
     except sqlite3.Error as e:
         logger.error(f"خطای پایگاه داده در receive_phone: {e}")
         await update.effective_message.reply_text(
@@ -1255,8 +1269,7 @@ if __name__ == "__main__":
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=True
+        fallbacks=[CommandHandler("cancel", cancel)]
     )
     
     # تنظیم هندلر گفت‌وگو برای ویرایش آگهی
@@ -1267,15 +1280,14 @@ if __name__ == "__main__":
             EDIT_FIELD: [
                 CallbackQueryHandler(edit_ad_field, pattern="^edit_"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_edit_field),
-                MessageHandler(filters.PHOTO, receive_ad_photos)  # اصلاح برای مدیریت عکس‌ها
+                MessageHandler(filters.PHOTO, receive_ad_photos)
             ],
             AD_PHOTOS: [
                 MessageHandler(filters.PHOTO, receive_ad_photos),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_photos)
             ],
         },
-        fallbacks=[CallbackQueryHandler(cancel, pattern="^cancel_edit$")],
-        per_message=True
+        fallbacks=[CallbackQueryHandler(cancel, pattern="^cancel_edit$")]
     )
     
     # افزودن هندلرها
@@ -1292,7 +1304,7 @@ if __name__ == "__main__":
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), receive_phone))
     application.add_handler(CallbackQueryHandler(show_ad_photos, pattern="^show_photos_"))
-    application.add_error_handler(error_handler)
+    application.add_handler(error_handler)
     
     # راه‌اندازی ربات
     logger.info("🤖 ربات آماده به کار است...")
