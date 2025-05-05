@@ -411,7 +411,7 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.effective_message.reply_text(
             "با تشکر از اعتماد شما. ✅ آگهی با موفقیت ثبت شد و در انتظار تأیید مدیر است.\n"
-            "می‌توانید از منوی اصلی برای ثبت آگه COMMISSIONی جدید ادامه دهید."
+            "می‌توانید از منوی اصلی برای ثبت آگهی جدید ادامه دهید."
         )
         context.user_data.clear()  # پاک کردن داده‌های موقت
         return ConversationHandler.END
@@ -1034,18 +1034,29 @@ async def main():
     application.add_handler(CommandHandler("admin", admin_panel))
     application.add_error_handler(error_handler)
     
+    # مقداردهی اولیه برنامه
+    await application.initialize()
+    
     # راه‌اندازی ربات
     logger.info("🚀 راه‌اندازی ربات...")
-    await application.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True,
-        timeout=10,
-        close_loop=False
-    )
+    try:
+        await application.run_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+            timeout=10,
+            close_loop=False
+        )
+    finally:
+        # اطمینان از خاموش شدن صحیح
+        await application.shutdown()
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
+    try:
+        # اجرای تابع main در حلقه رویداد موجود
+        loop = asyncio.get_running_loop()
         loop.create_task(main())
-    else:
+    except RuntimeError:
+        # اگر حلقه رویداد فعال نیست، یک حلقه جدید ایجاد می‌کنیم
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         loop.run_until_complete(main())
