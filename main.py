@@ -1295,8 +1295,7 @@ async def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=True
+        fallbacks=[CommandHandler("cancel", cancel)]
     )
     
     # تنظیم هندلر گفت‌وگو برای ویرایش آگهی
@@ -1314,8 +1313,7 @@ async def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_photos)
             ],
         },
-        fallbacks=[CallbackQueryHandler(cancel, pattern="^cancel_edit$")],
-        per_message=True
+        fallbacks=[CallbackQueryHandler(cancel, pattern="^cancel_edit$")]
     )
     
     # افزودن هندلرها
@@ -1344,8 +1342,17 @@ async def main():
     )
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        loop.create_task(main())
-    else:
-        loop.run_until_complete(main())
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(main())
+        else:
+            loop.run_until_complete(main())
+    except RuntimeError as e:
+        if "This event loop is already running" in str(e):
+            import nest_asyncio
+            nest_asyncio.apply()
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(main())
+        else:
+            raise e
