@@ -28,13 +28,9 @@ logger = logging.getLogger(__name__)
 # بارگذاری متغیرهای محیطی
 load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 if not TOKEN:
     logger.error("BOT_TOKEN not found in .env file")
     raise ValueError("لطفاً توکن ربات را در فایل .env تنظیم کنید.")
-if not WEBHOOK_URL:
-    logger.error("WEBHOOK_URL not found in .env file")
-    raise ValueError("لطفاً URL وب‌هوک را در فایل .env تنظیم کنید.")
 
 # تنظیمات کانال
 CHANNEL_URL = "https://t.me/bolori_car"
@@ -108,7 +104,7 @@ def clean_text(text):
     return text
 
 # --- تابع کمکی برای مدیریت نرخ ارسال ---
-async def send_message_with_rate_limit(bot, chat_id, text=None, photo=None, reply_markup=None, parse_mode=None):
+ Wasync def send_message_with_rate_limit(bot, chat_id, text=None, photo=None, reply_markup=None, parse_mode=None):
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -581,7 +577,7 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if missing_fields:
             logger.warning(f"Missing fields in ad data for user {user_id}: {missing_fields}")
             await update.effective_message.reply_text(
-                "⚠️ لطفاً ابتدا اطلاعات آگهی (عنوان، توضیحات، قیمت) را وارد کنید. از منوی اصلی گزینه 'ثبت آگهی' را انتخاب کنید.",
+                "⚠️ لطفاً ابتدا اطلاعات آگهی (عنوان، توضیحات، قیمت) را  را وارد کنید. از منوی اصلی گزینه 'ثبت آگهی' را انتخاب کنید.",
                 reply_markup=ReplyKeyboardRemove()
             )
             return ConversationHandler.END
@@ -998,7 +994,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
             (one_year_ago.isoformat(),)
         ).fetchall()
         
-        if not ads:
+        if not total_ads:
             await send_message_with_rate_limit(
                 context.bot,
                 update.effective_chat.id,
@@ -1276,9 +1272,9 @@ async def main():
     # ایجاد برنامه ربات
     application = Application.builder().token(TOKEN).build()
     
-    # تنظیم وب‌هوک
-    await application.bot.set_webhook(url=WEBHOOK_URL)
-    logger.info(f"🤖 وب‌هوک تنظیم شد: {WEBHOOK_URL}")
+    # اطمینان از حذف وب‌هوک قبلی
+    await application.bot.delete_webhook()
+    logger.info("🤖 وب‌هوک حذف شد، استفاده از Polling")
     
     # تنظیم هندلر گفت‌وگو برای ثبت آگهی
     conv_handler = ConversationHandler(
@@ -1338,12 +1334,11 @@ async def main():
     # افزودن هندلر خطا
     application.add_error_handler(error_handler)
     
-    # راه‌اندازی سرور وب‌هوک
-    await application.run_webhook(
-        listen="0.0.0.0",
-        port=8443,
-        url_path="/webhook",
-        webhook_url=WEBHOOK_URL
+    # راه‌اندازی Polling
+    await application.run_polling(
+        poll_interval=1.0,
+        timeout=10,
+        drop_pending_updates=True
     )
 
 if __name__ == "__main__":
