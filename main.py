@@ -410,12 +410,7 @@ async def save_edited_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query:
-        await query.answer()
-        message = query.message
-    else:
-        message = update.effective_message
+    message = update.effective_message
     
     if not await check_membership(update, context):
         await message.reply_text("⚠️ لطفاً ابتدا در کانال عضو شوید!")
@@ -1274,10 +1269,7 @@ async def main():
     
     # تنظیم هندلر گفت‌وگو برای ثبت آگهی
     conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("post_ad", post_ad),
-            CallbackQueryHandler(post_ad, pattern="^post_ad$"),
-        ],
+        entry_points=[CommandHandler("post_ad", post_ad)],
         states={
             AD_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)],
             AD_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)],
@@ -1317,6 +1309,7 @@ async def main():
     application.add_handler(conv_handler)
     application.add_handler(edit_conv_handler)
     application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
+    application.add_handler(CallbackQueryHandler(post_ad, pattern="^post_ad$"))
     application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
     application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve_|reject_|page_|change_status|status_|show_photos_|admin_exit)"))
     application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
@@ -1339,13 +1332,17 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # اگر حلقه رویداد در حال اجرا باشد، تابع main را در آن اجرا می‌کنیم
-            asyncio.ensure_future(main())
-        else:
-            # اگر حلقه رویداد اجرا نشده باشد، آن را اجرا می‌کنیم
-            loop.run_until_complete(main())
+        # استفاده از حلقه رویداد فعلی
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # اگر حلقه رویداد فعال نیست، یک حلقه جدید ایجاد می‌کنیم
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    # اجرای تابع main در حلقه رویداد
+    try:
+        loop.create_task(main())
+        loop.run_forever()
     except Exception as e:
         logger.error(f"خطا در راه‌اندازی ربات: {e}")
         raise e
