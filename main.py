@@ -167,7 +167,7 @@ async def check_membership_callback(update: Update, context: ContextTypes.DEFAUL
     user_id = query.from_user.id
     try:
         member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        if member.status in ['member\', 'administrator', 'creator']:
+        if member.status in ['member', 'administrator', 'creator']:
             await query.edit_message_text("✅ عضویت شما تأیید شد! حالا می‌توانید ادامه دهید.")
             await start(update, context)
         else:
