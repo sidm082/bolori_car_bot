@@ -218,11 +218,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start_edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    if query:
-        await query.answer()
-        message = query.message
-    else:
-        message = update.effective_message
+    await query.answer()
+    message = query.message
     
     if not await check_membership(update, context):
         await message.reply_text("⚠️ لطفاً ابتدا در کانال عضو شوید!")
@@ -331,6 +328,10 @@ async def edit_ad_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return EDIT_FIELD
 
 async def receive_edit_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
     ad_id = context.user_data['edit_ad_id']
     field = context.user_data['edit_field']
     
@@ -414,11 +415,8 @@ async def save_edited_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    if query:
-        await query.answer()
-        message = query.message
-    else:
-        message = update.effective_message
+    await query.answer()
+    message = query.message
     
     if not await check_membership(update, context):
         await message.reply_text("⚠️ لطفاً ابتدا در کانال عضو شوید!")
@@ -429,6 +427,10 @@ async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return AD_TITLE
 
 async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
     if not update.message.text:
         await update.effective_message.reply_text("لطفاً فقط متن وارد کنید.")
         return AD_TITLE
@@ -443,6 +445,10 @@ async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return AD_DESCRIPTION
 
 async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
     if not update.message.text:
         await update.effective_message.reply_text("لطفاً فقط متن وارد کنید.")
         return AD_DESCRIPTION
@@ -457,6 +463,10 @@ async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_T
     return AD_PRICE
 
 async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
     price = update.message.text.strip().replace(",", "")
     try:
         price_int = int(price)
@@ -472,6 +482,10 @@ async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AD_PRICE
 
 async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
     ad = context.user_data['ad']
     
     if update.message.text and update.message.text.lower() == "هیچ":
@@ -500,6 +514,10 @@ async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AD_PHOTOS
 
 async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
     user_id = update.effective_user.id
     conn = get_db_connection()
     try:
@@ -528,6 +546,10 @@ async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
 async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
     user_id = update.effective_user.id
     phone = None
     
@@ -599,6 +621,10 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
 async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
     ad = context.user_data['ad']
     user_id = update.effective_user.id
     
@@ -649,11 +675,8 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    if query:
-        await query.answer()
-        message = query.message
-    else:
-        message = update.effective_message
+    await query.answer()
+    message = query.message
     
     if update.effective_user.id not in ADMIN_ID:
         await message.reply_text("❌ دسترسی غیرمجاز!")
@@ -975,11 +998,8 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    if query:
-        await query.answer()
-        message = query.message
-    else:
-        message = update.effective_message
+    await query.answer()
+    message = query.message
     
     one_year_ago = datetime.now() - timedelta(days=365)
     
@@ -1049,11 +1069,8 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    if query:
-        await query.answer()
-        message = query.message
-    else:
-        message = update.effective_message
+    await query.answer()
+    message = query.message
     
     if update.effective_user.id not in ADMIN_ID:
         await message.reply_text("❌ دسترسی غیرمجاز!")
@@ -1105,6 +1122,10 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
 async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
     if update.effective_user.id not in ADMIN_ID:
         await update.effective_message.reply_text("❌ دسترسی غیرمجاز!")
         return
@@ -1146,6 +1167,10 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
 async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
     if update.effective_user.id not in ADMIN_ID:
         await update.effective_message.reply_text("❌ دسترسی غیرمجاز!")
         return
@@ -1198,13 +1223,16 @@ async def admin_navigation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     if query.data.startswith("page_"):
-        page = int(query.data.split('_')[1])
-        context.user_data['admin_page'] = page
+        context.user_data['admin_page'] = int(query.data.split('_')[1])
         await admin_panel(update, context)
     elif query.data == "admin_exit":
         await start(update, context)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
     context.user_data.clear()
     await update.effective_message.reply_text(
         "❌ عملیات فعلی لغو شد.",
@@ -1279,7 +1307,6 @@ async def main():
     # تنظیم هندلر گفت‌وگو برای ثبت آگهی
     conv_handler = ConversationHandler(
         entry_points=[
-            CommandHandler("post_ad", post_ad),
             CallbackQueryHandler(post_ad, pattern="^post_ad$"),
         ],
         states={
@@ -1295,7 +1322,8 @@ async def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)]
+        fallbacks=[CallbackQueryHandler(cancel, pattern="^cancel$")],
+        per_message=True
     )
     
     # تنظیم هندلر گفت‌وگو برای ویرایش آگهی
@@ -1313,7 +1341,8 @@ async def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_photos)
             ],
         },
-        fallbacks=[CallbackQueryHandler(cancel, pattern="^cancel_edit$")]
+        fallbacks=[CallbackQueryHandler(cancel, pattern="^cancel_edit$")],
+        per_message=True
     )
     
     # افزودن هندلرها
@@ -1342,17 +1371,10 @@ async def main():
     )
 
 if __name__ == "__main__":
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(main())
-        else:
-            loop.run_until_complete(main())
-    except RuntimeError as e:
-        if "This event loop is already running" in str(e):
-            import nest_asyncio
-            nest_asyncio.apply()
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(main())
-        else:
-            raise e
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        # اجرای تابع main در حلقه رویداد موجود
+        asyncio.run_coroutine_threadsafe(main(), loop)
+    else:
+        # اجرای عادی اگر حلقه رویداد در حال اجرا نباشد
+        loop.run_until_complete(main())
