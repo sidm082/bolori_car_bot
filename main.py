@@ -1288,7 +1288,7 @@ async def main():
     
     # تنظیم هندلر گفت‌وگو برای ویرایش آگهی
     edit_conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(start_edit_ad, pattern="^edit_info$")],
+        entry_points=[CommandHandler("edit_ad", start_edit_ad)],
         states={
             SELECT_AD: [CallbackQueryHandler(select_ad, pattern="^edit_ad_")],
             EDIT_FIELD: [
@@ -1310,6 +1310,7 @@ async def main():
     application.add_handler(edit_conv_handler)
     application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
     application.add_handler(CallbackQueryHandler(post_ad, pattern="^post_ad$"))
+    application.add_handler(CallbackQueryHandler(start_edit_ad, pattern="^edit_info$"))
     application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
     application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve_|reject_|page_|change_status|status_|show_photos_|admin_exit)"))
     application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
@@ -1323,8 +1324,10 @@ async def main():
     # افزودن هندلر خطا
     application.add_error_handler(error_handler)
     
-    # راه‌اندازی Polling
-    await application.run_polling(
+    # شروع Polling
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling(
         poll_interval=1.0,
         timeout=10,
         drop_pending_updates=True
@@ -1332,15 +1335,7 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        # استفاده از حلقه رویداد فعلی
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # اگر حلقه رویداد فعال نیست، یک حلقه جدید ایجاد می‌کنیم
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
-    # اجرای تابع main در حلقه رویداد
-    try:
+        loop = asyncio.get_event_loop()
         loop.create_task(main())
         loop.run_forever()
     except Exception as e:
