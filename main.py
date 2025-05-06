@@ -104,7 +104,7 @@ def clean_text(text):
     return text
 
 # --- تابع کمکی برای مدیریت نرخ ارسال ---
- Wasync def send_message_with_rate_limit(bot, chat_id, text=None, photo=None, reply_markup=None, parse_mode=None):
+async def send_message_with_rate_limit(bot, chat_id, text=None, photo=None, reply_markup=None, parse_mode=None):
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -167,7 +167,7 @@ async def check_membership_callback(update: Update, context: ContextTypes.DEFAUL
     user_id = query.from_user.id
     try:
         member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        if member.status in ['member', 'administrator', 'creator']:
+        if member.status in ['member\', 'administrator', 'creator']:
             await query.edit_message_text("✅ عضویت شما تأیید شد! حالا می‌توانید ادامه دهید.")
             await start(update, context)
         else:
@@ -577,7 +577,7 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if missing_fields:
             logger.warning(f"Missing fields in ad data for user {user_id}: {missing_fields}")
             await update.effective_message.reply_text(
-                "⚠️ لطفاً ابتدا اطلاعات آگهی (عنوان، توضیحات، قیمت) را  را وارد کنید. از منوی اصلی گزینه 'ثبت آگهی' را انتخاب کنید.",
+                "⚠️ لطفاً ابتدا اطلاعات آگهی (عنوان، توضیحات، قیمت) را وارد کنید. از منوی اصلی گزینه 'ثبت آگهی' را انتخاب کنید.",
                 reply_markup=ReplyKeyboardRemove()
             )
             return ConversationHandler.END
@@ -994,7 +994,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
             (one_year_ago.isoformat(),)
         ).fetchall()
         
-        if not total_ads:
+        if not ads:
             await send_message_with_rate_limit(
                 context.bot,
                 update.effective_chat.id,
