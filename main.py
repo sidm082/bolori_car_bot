@@ -17,6 +17,8 @@ from telegram.ext import (
 )
 from telegram.error import TelegramError, RetryAfter
 from dotenv import load_dotenv
+from flask import Flask
+import threading
 
 # تنظیمات لاگ‌گیری
 logging.basicConfig(
@@ -40,6 +42,18 @@ CHANNEL_USERNAME = "bolori_car"
 # مراحل گفتگو
 AD_TITLE, AD_DESCRIPTION, AD_PRICE, AD_PHOTOS, AD_PHONE = range(5)
 EDIT_AD, SELECT_AD, EDIT_FIELD = range(3)
+
+# ایجاد اپلیکیشن Flask برای UptimeRobot
+flask_app = Flask(__name__)
+
+# تعریف endpoint برای پینگ UptimeRobot
+@flask_app.route('/keepalive')
+def keep_alive():
+    return 'Bot is alive!', 200
+
+# تابع برای اجرای Flask در یک نخ جداگانه
+def run_flask():
+    flask_app.run(host='0.0.0.0', port=8080)
 
 # --- توابع دیتابیس ---
 def get_db_connection():
@@ -108,9 +122,8 @@ def update_admin_ids():
 def clean_text(text):
     if not text:
         return "نامشخص"
-    # حذف کاراکترهای غیرمجاز و نشانه‌های Markdown
     text = re.sub(r'[_*[\]()~`>#+-=|{}.!\n\r]', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()  # حذف فاصله‌های اضافی
+    text = re.sub(r'\s+', ' ', text).strip()
     return text
 
 # --- تابع کمکی برای مدیریت نرخ ارسال ---
@@ -133,10 +146,10 @@ async def send_message_with_rate_limit(bot, chat_id, text=None, photo=None, repl
                     reply_markup=reply_markup, 
                     parse_mode=parse_mode
                 )
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(1.0)  # افزایش تأخیر
             return True
         except RetryAfter as e:
-            delay = e.retry_after + random.uniform(0.1, 0.5)
+            delay = e.retry_after + random.uniform(0.5, 1.0)
             logger.warning(f"Rate limit hit: retrying after {delay}s")
             await asyncio.sleep(delay)
         except TelegramError as e:
@@ -166,7 +179,7 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     [InlineKeyboardButton("🔄 بررسی عضویت", callback_data="check_membership")]
                 ])
                 await update.effective_message.reply_text(
-                    "⚠️ خطایی در بررسی عضویت رخ داد. لطفاً در کانال عضو شوید و دوباره تلاش کنید:",
+                    f"⚠️ لطفاً در کانال {CHANNEL_URL} عضو شوید و دوباره تلاش کنید.",
                     reply_markup=keyboard
                 )
                 return False
@@ -183,10 +196,19 @@ async def check_membership_callback(update: Update, context: ContextTypes.DEFAUL
         else:
             await query.answer("شما هنوز عضو کانال نشده‌اید!", show_alert=True)
     except Exception as e:
-        logger.error(f"بررسی عضویت در پاسخ به callback برای کاربر {user_id} ناموفق بود: {e}")
+        logger.error(f"بررسی عضویت در callback برای کاربر {user_id} ناموفق بود: {e}")
         await query.answer("خطا در بررسی عضویت. لطفاً دوباره تلاش کنید.", show_alert=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        conn = get_db_connection()
+        conn.execute('SELECT 1')
+        conn.close()
+    except sqlite3.Error as e:
+        logger.error(f"خطای اتصال به پایگاه داده: {e}")
+        await update.effective_message.reply_text("⚠️ خطای سرور. لطفاً بعداً تلاش کنید.")
+        return
+    
     user = update.effective_user
     if await check_membership(update, context):
         buttons = [
@@ -238,7 +260,8 @@ async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     
     context.user_data['ad'] = {'photos': [], 'is_referral': 0}
-    await message.reply_text("📝 لطفاً برند و مدل خودروی خود را وارد کنید (مثال: پژو ۲۰۶ تیپ ۲، کیا سراتو، تویوتا کمری و ...):")
+    logger.info(f"Started ad creation for user {update.effective_user.id}")
+    await message.reply_text("📝 لطفاً برند و مدل خودروی خود را وارد کنید (مثال: پژو ۲۰۶ تیپ ۲، کیا سراتو، تویوتا کمری و ...). برای لغو، /cancel را ارسال کنید:")
     return AD_TITLE
 
 async def post_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -252,11 +275,14 @@ async def post_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     
     context.user_data['ad'] = {'photos': [], 'is_referral': 1}
-    await message.reply_text("📜 لطفاً برند و مدل خودروی حواله را وارد کنید (مثال: پژو ۲۰۶ تیپ ۲، کیا سراتو، تویوتا کمری و ...):")
+    logger.info(f"Started referral creation for user {update.effective_user.id}")
+    await message.reply_text("📜 لطفاً برند و مدل خودروی حواله را وارد کنید (مثال: پژو ۲۰۶ تیپ ۲، کیا سراتو، تویوتا کمری و ...). برای لغو، /cancel را ارسال کنید:")
     return AD_TITLE
 
 async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.text:
+    logger.info(f"Received title from user {update.effective_user.id}: {update.message.text}")
+    if not update.message or not update.message.text:
+        logger.warning(f"Invalid input from user {update.effective_user.id}")
         await update.effective_message.reply_text("لطفاً فقط متن وارد کنید.")
         return AD_TITLE
     
@@ -265,12 +291,17 @@ async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("عنوان بیش از حد طولانی است (حداکثر ۱۰۰ کاراکتر).")
         return AD_TITLE
     
-    context.user_data['ad']['temp_title'] = title  # ذخیره موقت برای استفاده در حواله
-    await update.effective_message.reply_text("لطفاً اطلاعات خودرو یا حواله شامل جزئیات (مثل رنگ، کارکرد، وضعیت بدنه، وضعیت فنی یا شرایط حواله) را وارد کنید.")
-    return AD_DESCRIPTION
+    try:
+        context.user_data['ad']['temp_title'] = title
+        await update.effective_message.reply_text("لطفاً اطلاعات خودرو یا حواله شامل جزئیات (مثل رنگ، کارکرد، وضعیت بدنه، وضعیت فنی یا شرایط حواله) را وارد کنید:")
+        return AD_DESCRIPTION
+    except Exception as e:
+        logger.error(f"خطا در receive_ad_title: {e}")
+        await update.effective_message.reply_text("⚠️ خطایی رخ داد. لطفاً دوباره تلاش کنید.")
+        return AD_TITLE
 
 async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.text:
+    if not update.message or not update.message.text:
         await update.effective_message.reply_text("لطفاً فقط متن وارد کنید.")
         return AD_DESCRIPTION
     
@@ -284,6 +315,10 @@ async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_T
     return AD_PRICE
 
 async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        await update.effective_message.reply_text("لطفاً فقط متن وارد کنید.")
+        return AD_PRICE
+    
     price = update.message.text.strip().replace(",", "")
     try:
         price_int = int(price)
@@ -292,7 +327,6 @@ async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         formatted_price = f"{price_int:,}"
         context.user_data['ad']['price'] = formatted_price
         
-        # تنظیم عنوان برای حواله
         if context.user_data['ad'].get('is_referral', 0):
             temp_title = context.user_data['ad']['temp_title']
             context.user_data['ad']['title'] = f"حواله‌ی {clean_text(temp_title)} با قیمت {formatted_price} تومان"
@@ -372,7 +406,7 @@ async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     finally:
         conn.close()
-        
+
 async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     phone = None
@@ -397,7 +431,12 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return AD_PHONE
     
-    if cleaned_phone.startswith('0'):
+    if cleaned_phone.startswith('0 Alphabetize this list:
+1. banana
+2. apple
+3. cherry
+4. date
+'):
         cleaned_phone = '+98' + cleaned_phone[1:]
     elif not cleaned_phone.startswith('+'):
         cleaned_phone = '+98' + cleaned_phone
@@ -671,7 +710,6 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             
             try:
-                # ارسال به کانال
                 if ad['photos']:
                     photos = ad['photos'].split(',')
                     await send_message_with_rate_limit(
@@ -695,11 +733,10 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                         parse_mode='Markdown'
                     )
                 
-                # ارسال به همه کاربران
                 users = cursor.execute('SELECT user_id FROM users').fetchall()
                 for user in users:
                     user_id = user['user_id']
-                    if user_id != ad['user_id']:  # جلوگیری از ارسال به صاحب آگهی
+                    if user_id != ad['user_id']:
                         try:
                             if ad['photos']:
                                 await send_message_with_rate_limit(
@@ -1166,28 +1203,33 @@ async def main():
         ],
         states={
             AD_TITLE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title),
+                MessageHandler(~filters.TEXT, lambda update, context: update.message.reply_text("لطفاً فقط متن وارد کنید."))
             ],
             AD_DESCRIPTION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description),
+                MessageHandler(~filters.TEXT, lambda update, context: update.message.reply_text("لطفاً فقط متن وارد کنید."))
             ],
             AD_PRICE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price),
+                MessageHandler(~filters.TEXT, lambda update, context: update.message.reply_text("لطفاً فقط متن وارد کنید."))
             ],
             AD_PHOTOS: [
                 MessageHandler(filters.PHOTO, receive_ad_photos),
-                MessageHandler(filters.Regex('^(تمام|هیچ)$'), receive_ad_photos)
+                MessageHandler(filters.Regex('^(تمام|هیچ)$'), receive_ad_photos),
+                MessageHandler(~filters.PHOTO & ~filters.Regex('^(تمام|هیچ)$'), lambda update, context: update.message.reply_text("لطفاً یک عکس ارسال کنید یا 'تمام' یا 'هیچ' را بنویسید."))
             ],
             AD_PHONE: [
                 MessageHandler(filters.CONTACT, receive_phone),
-                MessageHandler(filters.Regex(r'^(\+98|0)?9\d{9}$'), receive_phone)
+                MessageHandler(filters.Regex(r'^(\+98|0)?9\d{9}$'), receive_phone),
+                MessageHandler(~filters.CONTACT & ~filters.Regex(r'^(\+98|0)?9\d{9}$'), lambda update, context: update.message.reply_text("لطفاً یک شماره تلفن معتبر وارد کنید."))
             ],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
             MessageHandler(filters.COMMAND, cancel)
         ],
-        per_message=True  # برای رفع هشدار PTBUserWarning
+        per_message=True
     )
     
     application.add_handler(CommandHandler("start", start))
@@ -1211,10 +1253,14 @@ async def main():
         timeout=10,
         drop_pending_updates=True
     )
-    
+
 if __name__ == "__main__":
     try:
         loop = asyncio.get_event_loop()
+        # اجرای Flask در یک نخ جداگانه
+        flask_thread = threading.Thread(target=run_flask, daemon=True)
+        flask_thread.start()
+        # اجرای ربات
         loop.create_task(main())
         loop.run_forever()
     except Exception as e:
