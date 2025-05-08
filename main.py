@@ -98,7 +98,7 @@ def update_admin_ids():
 # --- تابع پاکسازی متن ---
 def clean_text(text):
     if not text:
-        return text
+        return "نامشخص"
     text = re.sub(r'[_*[\]()~`>#+-=|{}.!]', '', text)
     text = ' '.join(text.split())
     return text
@@ -181,7 +181,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await check_membership(update, context):
         buttons = [
             [InlineKeyboardButton("➕ ثبت آگهی", callback_data="post_ad")],
-          #  [InlineKeyboardButton("✏️ ویرایش اطلاعات", callback_data="edit_info")],
             [InlineKeyboardButton("🗂️ نمایش آگهی‌ها", callback_data="show_ads")]
         ]
         
@@ -308,7 +307,6 @@ async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['ad']['phone'] = user_data['phone']
             return await save_ad(update, context)
         
-        # بررسی وجود داده‌های آگهی
         if 'ad' not in context.user_data or not context.user_data['ad']:
             await update.effective_message.reply_text(
                 "⚠️ داده‌های آگهی یافت نشد. لطفاً از ابتدا آگهی را ثبت کنید.",
@@ -374,7 +372,6 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (user_id, cleaned_phone)
             )
         
-        # بررسی وجود داده‌های آگهی
         if 'ad' not in context.user_data or not context.user_data['ad']:
             await update.effective_message.reply_text(
                 "⚠️ داده‌های آگهی یافت نشد. لطفاً از ابتدا آگهی را ثبت کنید.",
@@ -515,22 +512,22 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (ad['user_id'],)
             ).fetchone()
             
-            phone = user_info['phone'] if user_info else "ناشناس"
+            phone = user_info['phone'] if user_info and user_info['phone'] else "نامشخص"
+            price = ad['price'] if ad['price'] else "نامشخص"
             
             try:
                 user = await context.bot.get_chat(ad['user_id'])
-                username = user.username or f"{user.first_name} {user.last_name or ''}"
+                username = user.username or f"{user.first_name} {user.last_name or ''}".strip() or "ناشناس"
             except Exception:
-                user = None
                 username = "ناشناس"
             
             ad_text = (
                 f"🆔 آگهی: {ad['id']}\n"
-                f"👤 کاربر: {username}\n"
-                f"📞 شماره: {clean_text(phone)}\n"
+                f"👤 کاربر: {clean_text(username)}\n"
+                f"📞 شماره تماس: {clean_text(phone)}\n"
                 f"📌 عنوان: {clean_text(ad['title'])}\n"
                 f"💬 توضیحات: {clean_text(ad['description'])}\n"
-                f"💰 قیمت: {clean_text(ad['price'])}\n"
+                f"💰 قیمت: {clean_text(price)} تومان\n"
                 f"📅 تاریخ: {ad['created_at']}\n"
                 f"📸 تصاویر: {'دارد' if ad['photos'] else 'ندارد'}\n"
                 f"📊 وضعیت: {ad['status']}"
@@ -571,7 +568,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         nav_buttons_row = [nav_buttons] if nav_buttons else []
         
-        await send_message_with_rate_limit(
+        await badminton_message_with_rate_limit(
             context.bot,
             update.effective_chat.id,
             text=f"📄 صفحه {page} از {total_pages} (وضعیت: {status_filter})",
@@ -621,21 +618,12 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             new_status = "approved"
             user_message = f"✅ آگهی شما *{clean_text(ad['title'])}* تأیید شد و در کانال منتشر شد."
             
-            user_info = cursor.execute(
-                'SELECT phone FROM users WHERE user_id = ?', 
-                (ad['user_id'],)
-            ).fetchone()
-            phone = clean_text(user_info['phone'] if user_info else "ناشناس")
-            
             title = clean_text(ad['title'])
             description = clean_text(ad['description'])
-            price = clean_text(ad['price'])
             
             ad_text = (
                 f"🚗 {title}\n\n"
-                f"📝 توضیحات: {description}\n"
-                f"💰 قیمت: {price} تومان\n"
-                f"📞 تماس: {phone}\n\n"
+                f"📝 توضیحات: {description}\n\n"
                 f"➖➖➖➖➖\n"
                 f"☑️ اتوگالری بلوری\n"
                 f"▫️خرید▫️فروش▫️کارشناسی\n"
@@ -644,12 +632,14 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             
             try:
+                # ارسال به کانال
                 if ad['photos']:
                     photos = ad['photos'].split(',')
                     await context.bot.send_photo(
                         chat_id=CHANNEL_ID,
                         photo=photos[0],
-                        caption=ad_text
+                        caption=ad_text,
+                        parse_mode='Markdown'
                     )
                     for photo in photos[1:3]:
                         await context.bot.send_photo(
@@ -659,11 +649,43 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                 else:
                     await context.bot.send_message(
                         chat_id=CHANNEL_ID,
-                        text=ad_text
+                        text=ad_text,
+                        parse_mode='Markdown'
                     )
+                
+                # ارسال به همه کاربران
+                users = cursor.execute('SELECT user_id FROM users').fetchall()
+                for user in users:
+                    user_id = user['user_id']
+                    if user_id != ad['user_id']:  # جلوگیری از ارسال به صاحب آگهی
+                        try:
+                            if ad['photos']:
+                                await send_message_with_rate_limit(
+                                    context.bot,
+                                    user_id,
+                                    text=ad_text,
+                                    photo=photos[0],
+                                    parse_mode='Markdown'
+                                )
+                                for photo in photos[1:3]:
+                                    await send_message_with_rate_limit(
+                                        context.bot,
+                                        user_id,
+                                        photo=photo
+                                    )
+                            else:
+                                await send_message_with_rate_limit(
+                                    context.bot,
+                                    user_id,
+                                    text=ad_text,
+                                    parse_mode='Markdown'
+                                )
+                        except Exception as e:
+                            logger.error(f"خطا در ارسال آگهی به کاربر {user_id}: {e}")
+            
             except TelegramError as e:
-                logger.error(f"خطا در ارسال آگهی به کانال: {e}")
-                await query.message.reply_text("❌ خطایی در انتشار آگهی در کانال رخ داد.")
+                logger.error(f"خطا در ارسال آگهی به کانال یا کاربران: {e}")
+                await query.message.reply_text("❌ خطایی در انتشار آگهی رخ داد.")
                 return
             
             cursor.execute(
@@ -681,7 +703,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             except Exception as e:
                 logger.error(f"خطا در اطلاع‌رسانی به کاربر {ad['user_id']}: {e}")
             
-            await query.message.reply_text(f"✅ آگهی {ad_id} تأیید و در کانال منتشر شد.")
+            await query.message.reply_text(f"✅ آگهی {ad_id} تأیید و در کانال و برای کاربران منتشر شد.")
         
         elif action == "reject":
             new_status = "rejected"
