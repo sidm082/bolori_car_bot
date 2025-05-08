@@ -1074,9 +1074,8 @@ async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
 # --- تنظیمات اصلی ربات ---
-
-  async def main():
-    init_db()  # این خط باید 4 فاصله تورفتگی داشته باشد
+async def main():
+    init_db()
     global ADMIN_ID
     ADMIN_ID = load_admin_ids()
     
