@@ -136,7 +136,7 @@ async def send_message_with_rate_limit(bot, chat_id, text=None, photo=None, repl
             await asyncio.sleep(0.5)
             return True
         except RetryAfter as e:
-            delay = e.retry_after + random.uniform(0.1, 0.5)  # اصلاح خطای نگارشی
+            delay = e.retry_after + random.uniform(0.1, 0.5)
             logger.warning(f"Rate limit hit: retrying after {delay}s")
             await asyncio.sleep(delay)
         except TelegramError as e:
@@ -551,7 +551,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (ad['user_id'],)
             ).fetchone()
             
-            phone = user_info['phone'] if user plunger_info and user_info['phone'] else "نامشخص"
+            phone = user_info['phone'] if user_info and user_info['phone'] else "نامشخص"
             price = ad['price'] if ad['price'] else "نامشخص"
             
             try:
