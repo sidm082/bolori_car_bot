@@ -308,6 +308,14 @@ async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['ad']['phone'] = user_data['phone']
             return await save_ad(update, context)
         
+        # بررسی وجود داده‌های آگهی
+        if 'ad' not in context.user_data or not context.user_data['ad']:
+            await update.effective_message.reply_text(
+                "⚠️ داده‌های آگهی یافت نشد. لطفاً از ابتدا آگهی را ثبت کنید.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return ConversationHandler.END
+        
         keyboard = ReplyKeyboardMarkup(
             [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
             resize_keyboard=True,
@@ -321,11 +329,14 @@ async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AD_PHONE
     except sqlite3.Error as e:
         logger.error(f"خطای پایگاه داده در request_phone: {e}")
-        await update.effective_message.reply_text("❌ خطایی در بررسی اطلاعات رخ داد.")
+        await update.effective_message.reply_text(
+            "❌ خطایی در بررسی اطلاعات رخ داد.",
+            reply_markup=ReplyKeyboardRemove()
+        )
         return ConversationHandler.END
     finally:
         conn.close()
-
+        
 async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     phone = None
@@ -336,7 +347,8 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         phone = update.message.text.strip()
     
     phone_pattern = r'^(\+98|0)?9\d{9}$'
-    cleaned_phone = phone.replace('-', '').replace(' ', '')
+    cleaned_phone = phone.replace('-', '').replace(' ', '') if phone else ''
+    
     if not phone or not re.match(phone_pattern, cleaned_phone):
         keyboard = ReplyKeyboardMarkup(
             [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
@@ -362,21 +374,22 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (user_id, cleaned_phone)
             )
         
+        # بررسی وجود داده‌های آگهی
         if 'ad' not in context.user_data or not context.user_data['ad']:
             await update.effective_message.reply_text(
-                "✅ شماره تلفن با موفقیت به‌روزرسانی شد.",
+                "⚠️ داده‌های آگهی یافت نشد. لطفاً از ابتدا آگهی را ثبت کنید.",
                 reply_markup=ReplyKeyboardRemove()
             )
             return ConversationHandler.END
         
         ad = context.user_data['ad']
         required_fields = ['title', 'description', 'price']
-        missing_fields = [field for field in required_fields if field not in ad]
+        missing_fields = [field for field in required_fields if field not in ad or not ad[field]]
         
         if missing_fields:
             logger.warning(f"Missing fields in ad data for user {user_id}: {missing_fields}")
             await update.effective_message.reply_text(
-                "⚠️ لطفاً ابتدا اطلاعات آگهی (عنوان، توضیحات، قیمت) را وارد کنید. از منوی اصلی گزینه 'ثبت آگهی' را انتخاب کنید.",
+                f"⚠️ اطلاعات آگهی ناقص است (کمبود: {', '.join(missing_fields)}). لطفاً از منوی اصلی گزینه 'ثبت آگهی' را انتخاب کنید.",
                 reply_markup=ReplyKeyboardRemove()
             )
             return ConversationHandler.END
@@ -393,7 +406,7 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ خطایی در ثبت اطلاعات رخ داد. لطفاً دوباره تلاش کنید.",
             reply_markup=ReplyKeyboardRemove()
         )
-        return AD_PHONE
+        return ConversationHandler.END
     finally:
         conn.close()
 
@@ -1061,45 +1074,49 @@ async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
 # --- تنظیمات اصلی ربات ---
-async def main():
-    # مقداردهی اولیه پایگاه داده
+
+    async def main():
     init_db()
     global ADMIN_ID
     ADMIN_ID = load_admin_ids()
     
-    # ایجاد برنامه ربات
     application = Application.builder().token(TOKEN).build()
     
-    # اطمینان از حذف وب‌هوک قبلی
     await application.bot.delete_webhook()
     logger.info("🤖 وب‌هوک حذف شد، استفاده از Polling")
     
-    # تنظیم هندلر گفت‌وگو برای ثبت آگهی
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("post_ad", post_ad)],
-        states={
-            AD_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)],
-            AD_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)],
-            AD_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)],
-            AD_PHOTOS: [
-                MessageHandler(filters.PHOTO, receive_ad_photos),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_photos)
-            ],
-            AD_PHONE: [
-                MessageHandler(filters.CONTACT, receive_phone),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)
-            ],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)]
-    )
-    
-    # تنظیم هندل
-    
-    # افزودن هندلرها
+   conv_handler = ConversationHandler(
+    entry_points=[
+        CallbackQueryHandler(post_ad, pattern="^post_ad$"),
+        CommandHandler("post_ad", post_ad)
+    ],
+    states={
+        AD_TITLE: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)
+        ],
+        AD_DESCRIPTION: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)
+        ],
+        AD_PRICE: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)
+        ],
+        AD_PHOTOS: [
+            MessageHandler(filters.PHOTO, receive_ad_photos),
+            MessageHandler(filters.Regex('^(تمام|هیچ)$'), receive_ad_photos)
+        ],
+        AD_PHONE: [
+            MessageHandler(filters.CONTACT, receive_phone),
+            MessageHandler(filters.Regex(r'^(\+98|0)?9\d{9}$'), receive_phone)
+        ],
+    },
+    fallbacks=[
+        CommandHandler("cancel", cancel),
+        MessageHandler(filters.COMMAND, cancel)
+    ]
+)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
-    application.add_handler(CallbackQueryHandler(post_ad, pattern="^post_ad$"))
     application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
     application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve_|reject_|page_|change_status|status_|show_photos_|admin_exit)"))
     application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
@@ -1107,13 +1124,10 @@ async def main():
     application.add_handler(CommandHandler("add_admin", add_admin))
     application.add_handler(CommandHandler("remove_admin", remove_admin))
     application.add_handler(CommandHandler("stats", stats))
-    application.add_handler(MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), receive_phone))
     application.add_handler(CallbackQueryHandler(show_ad_photos, pattern="^show_photos_"))
     
-    # افزودن هندلر خطا
     application.add_error_handler(error_handler)
     
-    # شروع Polling
     await application.initialize()
     await application.start()
     await application.updater.start_polling(
