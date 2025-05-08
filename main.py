@@ -1093,23 +1093,7 @@ async def main():
         fallbacks=[CommandHandler("cancel", cancel)]
     )
     
-    # تنظیم هندلر گفت‌وگو برای ویرایش آگهی
-    edit_conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("edit_ad", start_edit_ad)],
-        states={
-            SELECT_AD: [CallbackQueryHandler(select_ad, pattern="^edit_ad_")],
-            EDIT_FIELD: [
-                CallbackQueryHandler(edit_ad_field, pattern="^edit_"),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_edit_field),
-                MessageHandler(filters.PHOTO, receive_ad_photos)
-            ],
-            AD_PHOTOS: [
-                MessageHandler(filters.PHOTO, receive_ad_photos),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_photos)
-            ],
-        },
-        fallbacks=[CallbackQueryHandler(cancel, pattern="^cancel_edit$")]
-    )
+    # تنظیم هندل
     
     # افزودن هندلرها
     application.add_handler(CommandHandler("start", start))
@@ -1117,7 +1101,6 @@ async def main():
     application.add_handler(edit_conv_handler)
     application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
     application.add_handler(CallbackQueryHandler(post_ad, pattern="^post_ad$"))
-    application.add_handler(CallbackQueryHandler(start_edit_ad, pattern="^edit_info$"))
     application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
     application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve_|reject_|page_|change_status|status_|show_photos_|admin_exit)"))
     application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
