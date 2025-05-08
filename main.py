@@ -1214,9 +1214,7 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        loop = asyncio.get_event_loop()
-        loop.create_task(main())
-        loop.run_forever()
+        asyncio.run(main())
     except Exception as e:
         logger.error(f"خطا در راه‌اندازی ربات: {e}")
         raise e
