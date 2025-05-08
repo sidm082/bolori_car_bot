@@ -1098,7 +1098,6 @@ async def main():
     # افزودن هندلرها
     application.add_handler(CommandHandler("start", start))
     application.add_handler(conv_handler)
-    application.add_handler(edit_conv_handler)
     application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
     application.add_handler(CallbackQueryHandler(post_ad, pattern="^post_ad$"))
     application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
