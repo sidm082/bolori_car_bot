@@ -1075,8 +1075,8 @@ async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- تنظیمات اصلی ربات ---
 
-    async def main():
-    init_db()
+  async def main():
+    init_db()  # این خط باید 4 فاصله تورفتگی داشته باشد
     global ADMIN_ID
     ADMIN_ID = load_admin_ids()
     
@@ -1085,35 +1085,36 @@ async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await application.bot.delete_webhook()
     logger.info("🤖 وب‌هوک حذف شد، استفاده از Polling")
     
-   conv_handler = ConversationHandler(
-    entry_points=[
-        CallbackQueryHandler(post_ad, pattern="^post_ad$"),
-        CommandHandler("post_ad", post_ad)
-    ],
-    states={
-        AD_TITLE: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(post_ad, pattern="^post_ad$"),
+            CommandHandler("post_ad", post_ad)
         ],
-        AD_DESCRIPTION: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)
-        ],
-        AD_PRICE: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)
-        ],
-        AD_PHOTOS: [
-            MessageHandler(filters.PHOTO, receive_ad_photos),
-            MessageHandler(filters.Regex('^(تمام|هیچ)$'), receive_ad_photos)
-        ],
-        AD_PHONE: [
-            MessageHandler(filters.CONTACT, receive_phone),
-            MessageHandler(filters.Regex(r'^(\+98|0)?9\d{9}$'), receive_phone)
-        ],
-    },
-    fallbacks=[
-        CommandHandler("cancel", cancel),
-        MessageHandler(filters.COMMAND, cancel)
-    ]
-)
+        states={
+            AD_TITLE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)
+            ],
+            AD_DESCRIPTION: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)
+            ],
+            AD_PRICE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)
+            ],
+            AD_PHOTOS: [
+                MessageHandler(filters.PHOTO, receive_ad_photos),
+                MessageHandler(filters.Regex('^(تمام|هیچ)$'), receive_ad_photos)
+            ],
+            AD_PHONE: [
+                MessageHandler(filters.CONTACT, receive_phone),
+                MessageHandler(filters.Regex(r'^(\+98|0)?9\d{9}$'), receive_phone)
+            ],
+        },
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            MessageHandler(filters.COMMAND, cancel)
+        ]
+    )
+    
     application.add_handler(CommandHandler("start", start))
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
