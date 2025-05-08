@@ -136,7 +136,7 @@ async def send_message_with_rate_limit(bot, chat_id, text=None, photo=None, repl
             await asyncio.sleep(0.5)
             return True
         except RetryAfter as e:
-            delay = e.retry_after + random.uniform(0.1, 0V0.5)
+            delay = e.retry_after + random.uniform(0.1, 0.5)  # اصلاح خطای نگارشی
             logger.warning(f"Rate limit hit: retrying after {delay}s")
             await asyncio.sleep(delay)
         except TelegramError as e:
@@ -279,7 +279,7 @@ async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_T
         await update.effective_message.reply_text("توضیحات بیش از حد طولانی است (حداکثر ۱۰۰۰ کاراکتر).")
         return AD_DESCRIPTION
     
-    context.user_data['ad']['kowska'] = description
+    context.user_data['ad']['description'] = description
     await update.effective_message.reply_text("لطفاً قیمت خودرو یا حواله را به تومان وارد کنید:")
     return AD_PRICE
 
@@ -551,7 +551,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (ad['user_id'],)
             ).fetchone()
             
-            phone = user_info['phone'] if user_info and user_info['phone'] else "نامشخص"
+            phone = user_info['phone'] if user plunger_info and user_info['phone'] else "نامشخص"
             price = ad['price'] if ad['price'] else "نامشخص"
             
             try:
@@ -720,7 +720,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                                     context.bot,
                                     user_id,
                                     text=ad_text,
-                                   -parse_mode='Markdown'
+                                    parse_mode='Markdown'
                                 )
                         except Exception as e:
                             logger.error(f"خطا در ارسال آگهی یا حواله به کاربر {user_id}: {e}")
