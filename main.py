@@ -181,7 +181,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await check_membership(update, context):
         buttons = [
             [InlineKeyboardButton("➕ ثبت آگهی", callback_data="post_ad")],
-            [InlineKeyboardButton("✏️ ویرایش اطلاعات", callback_data="edit_info")],
+          #  [InlineKeyboardButton("✏️ ویرایش اطلاعات", callback_data="edit_info")],
             [InlineKeyboardButton("🗂️ نمایش آگهی‌ها", callback_data="show_ads")]
         ]
         
@@ -216,198 +216,88 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             conn.close()
 
-async def start_edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    message = query.message
+#async def start_edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#    query = update.callback_query
+#    await query.answer()
+#    message = query.message
     
-    if not await check_membership(update, context):
-        await message.reply_text("⚠️ لطفاً ابتدا در کانال عضو شوید!")
-        return ConversationHandler.END
+ #   if not await check_membership(update, context):
+   #     await message.reply_text("⚠️ لطفاً ابتدا در کانال عضو شوید!")
+  #      return ConversationHandler.END
     
-    user_id = update.effective_user.id
-    conn = get_db_connection()
-    try:
-        user_data = conn.execute('SELECT phone FROM users WHERE user_id = ?', (user_id,)).fetchone()
-        current_phone = user_data['phone'] if user_data and user_data['phone'] else "ثبت نشده"
+#    user_id = update.effective_user.id
+#    conn = get_db_connection()
+#try:
+ #       user_data = conn.execute('SELECT phone FROM users WHERE user_id = ?', (user_id,)).fetchone()
+ #       current_phone = user_data['phone'] if user_data and user_data['phone'] else "ثبت نشده"
         
-        keyboard = ReplyKeyboardMarkup(
-            [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
+ #       keyboard = ReplyKeyboardMarkup(
+ #           [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
+ #           resize_keyboard=True,
+  #          one_time_keyboard=True
+ #       )
         
-        await message.reply_text(
-            f"📞 شماره تلفن فعلی شما: {current_phone}\n"
-            "لطفاً شماره تلفن جدید را با زدن دکمه زیر یا تایپ دستی ارسال کنید:",
-            reply_markup=keyboard
-        )
-        return AD_PHONE
-    except sqlite3.Error as e:
-        logger.error(f"خطای پایگاه داده در start_edit_info: {e}")
-        await message.reply_text("❌ خطایی در بررسی اطلاعات رخ داد.")
-        return ConversationHandler.END
-    finally:
-        conn.close()
+ #       await message.reply_text(
+ #           f"📞 شماره تلفن فعلی شما: {current_phone}\n"
+   #         "لطفاً شماره تلفن جدید را با زدن دکمه زیر یا تایپ دستی ارسال کنید:",
+   #         reply_markup=keyboard
+  #      )
+ #       return AD_PHONE
+#    except sqlite3.Error as e:
+#        logger.error(f"خطای پایگاه داده در start_edit_info: {e}")
+ #       await message.reply_text("❌ خطایی در بررسی اطلاعات رخ داد.")
+#        return ConversationHandler.END
+#    finally:
+#        conn.close()
 
-async def start_edit_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+#async def start_edit_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#    query = update.callback_query
+#    await query.answer()
     
-    user_id = update.effective_user.id
-    conn = get_db_connection()
-    try:
-        ads = conn.execute(
-            'SELECT id, title FROM ads WHERE user_id = ? AND status = "pending"',
-            (user_id,)
-        ).fetchall()
+#    user_id = update.effective_user.id
+#    conn = get_db_connection()
+#    try:
+#        ads = conn.execute(
+#            'SELECT id, title FROM ads WHERE user_id = ? AND status = "pending"',
+#            (user_id,)
+#        ).fetchall()
         
-        if not ads:
-            await query.message.reply_text("شما هیچ آگهی در انتظار تأییدی ندارید.")
-            return ConversationHandler.END
+ #       if not ads:
+  #          await query.message.reply_text("شما هیچ آگهی در انتظار تأییدی ندارید.")
+   #         return ConversationHandler.END
         
-        buttons = [
-            [InlineKeyboardButton(f"{ad['title']} (ID: {ad['id']})", callback_data=f"edit_ad_{ad['id']}")]
-            for ad in ads
-        ]
-        buttons.append([InlineKeyboardButton("لغو", callback_data="cancel_edit")])
+#        buttons = [
+ #           [InlineKeyboardButton(f"{ad['title']} (ID: {ad['id']})", callback_data=f"edit_ad_{ad['id']}")]
+#            for ad in ads
+#        ]
+ #       buttons.append([InlineKeyboardButton("لغو", callback_data="cancel_edit")])
         
-        await query.message.reply_text(
-            "لطفاً آگهی مورد نظر برای ویرایش را انتخاب کنید:",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
-        return SELECT_AD
-    finally:
-        conn.close()
+#        await query.message.reply_text(
+ #           "لطفاً آگهی مورد نظر برای ویرایش را انتخاب کنید:",
+#            reply_markup=InlineKeyboardMarkup(buttons)
+ #       )
+#        return SELECT_AD
+#    finally:
+#        conn.close()
 
-async def select_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+#async def select_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+ #   query = update.callback_query
+#    await query.answer()
     
-    ad_id = int(query.data.split('_')[2])
-    context.user_data['edit_ad_id'] = ad_id
+#    ad_id = int(query.data.split('_')[2])
+#    context.user_data['edit_ad_id'] = ad_id
     
-    buttons = [
-        [InlineKeyboardButton("عنوان", callback_data="edit_title")],
-        [InlineKeyboardButton("توضیحات", callback_data="edit_description")],
-        [InlineKeyboardButton("قیمت", callback_data="edit_price")],
-        [InlineKeyboardButton("عکس‌ها", callback_data="edit_photos")],
-        [InlineKeyboardButton("لغو", callback_data="cancel_edit")]
-    ]
+#    buttons = [
+     #   [InlineKeyboardButton("عنوان", callback_data="edit_title")],
+   #     [InlineKeyboardButton("توضیحات", callback_data="edit_description")],
+   #     [InlineKeyboardButton("قیمت", callback_data="edit_price")],
+      #  [InlineKeyboardButton("عکس‌ها", callback_data="edit_photos")],
+        #[InlineKeyboardButton("لغو", callback_data="cancel_edit")]
+ #   ]
     
-    await query.message.reply_text(
-        "کدام بخش از آگهی را می‌خواهید ویرایش کنید؟",
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
-    return EDIT_FIELD
-
-async def edit_ad_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    field = query.data
-    ad_id = context.user_data['edit_ad_id']
-    
-    if field == "edit_title":
-        await query.message.reply_text("لطفاً عنوان جدید را وارد کنید:")
-        context.user_data['edit_field'] = 'title'
-    elif field == "edit_description":
-        await query.message.reply_text("لطفاً توضیحات جدید را وارد کنید:")
-        context.user_data['edit_field'] = 'description'
-    elif field == "edit_price":
-        await query.message.reply_text("لطفاً قیمت جدید را به تومان وارد کنید:")
-        context.user_data['edit_field'] = 'price'
-    elif field == "edit_photos":
-        context.user_data['ad'] = {'photos': []}
-        await query.message.reply_text(
-            "لطفاً عکس‌های جدید را ارسال کنید (حداکثر ۵ تصویر) یا 'تمام' یا 'هیچ' را بنویسید:"
-        )
-        context.user_data['edit_field'] = 'photos'
-        return AD_PHOTOS
-    
-    return EDIT_FIELD
-
-async def receive_edit_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    ad_id = context.user_data['edit_ad_id']
-    field = context.user_data['edit_field']
-    
-    if field == 'photos':
-        ad = context.user_data['ad']
-        if update.message.text and update.message.text.lower() == "هیچ":
-            ad['photos'] = []
-            return await save_edited_ad(update, context)
-        elif update.message.photo:
-            if len(ad['photos']) >= 5:
-                await update.effective_message.reply_text(
-                    "⚠️ شما حداکثر ۵ تصویر می‌توانید ارسال کنید. لطفاً 'تمام' را بنویسید."
-                )
-                return AD_PHOTOS
-            ad['photos'].append(update.message.photo[-1].file_id)
-            await update.effective_message.reply_text(
-                f"عکس دریافت شد ({len(ad['photos'])}/۵). برای ارسال عکس دیگر، عکس بفرستید یا 'تمام' را ارسال کنید."
-            )
-            return AD_PHOTOS
-        elif update.message.text and update.message.text.lower() == "تمام":
-            if not ad['photos']:
-                await update.effective_message.reply_text("لطفاً حداقل یک عکس ارسال کنید یا 'هیچ' را بفرستید.")
-                return AD_PHOTOS
-            return await save_edited_ad(update, context)
-        else:
-            await update.effective_message.reply_text(
-                "لطفاً یک عکس ارسال کنید یا 'تمام' یا 'هیچ' را بنویسید."
-            )
-            return AD_PHOTOS
-    
-    value = update.message.text.strip()
-    if not value:
-        await update.effective_message.reply_text("لطفاً مقدار معتبر وارد کنید.")
-        return EDIT_FIELD
-    
-    if field == 'price':
-        try:
-            price_int = int(value.replace(",", ""))
-            if price_int <= 0:
-                raise ValueError
-            value = f"{price_int:,}"
-        except ValueError:
-            await update.effective_message.reply_text("لطفاً قیمت را به صورت عددی و به تومان وارد کنید.")
-            return EDIT_FIELD
-    
-    conn = get_db_connection()
-    try:
-        with conn:
-            conn.execute(
-                f'UPDATE ads SET {field} = ? WHERE id = ?',
-                (value, ad_id)
-            )
-        await update.effective_message.reply_text("✅ آگهی با موفقیت ویرایش شد.")
-        return await save_edited_ad(update, context)
-    except sqlite3.Error as e:
-        logger.error(f"خطای پایگاه داده در receive_edit_field: {e}")
-        await update.effective_message.reply_text("❌ خطایی در ویرایش آگهی رخ داد.")
-        return ConversationHandler.END
-    finally:
-        conn.close()
-
-async def save_edited_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    ad_id = context.user_data['edit_ad_id']
-    if 'ad' in context.user_data and context.user_data['ad'].get('photos') is not None:
-        photos = context.user_data['ad']['photos']
-        conn = get_db_connection()
-        try:
-            with conn:
-                conn.execute(
-                    'UPDATE ads SET photos = ? WHERE id = ?',
-                    (','.join(photos) if photos else '', ad_id)
-                )
-        finally:
-            conn.close()
-    
-    await update.effective_message.reply_text(
-        "✅ آگهی با موفقیت ویرایش شد و در انتظار تأیید مدیر است."
-    )
-    context.user_data.clear()
-    return ConversationHandler.END
+ #   await query.message.reply_text(
+ #       "کدام بخش از آگهی را می‌خواهید ویرایش کنید؟",
+  #      reply_markup=InlineKeyboardMarkup(buttons) 
 
 async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
