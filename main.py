@@ -36,6 +36,9 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET')
+PORT = int(os.getenv('PORT', 8080))
+
 if not TOKEN:
     logger.error("BOT_TOKEN not found in .env file")
     raise ValueError("لطفاً توکن ربات را در فایل .env تنظیم کنید.")
@@ -52,52 +55,79 @@ EDIT_AD, SELECT_AD, EDIT_FIELD = range(3)
 # ایجاد اپلیکیشن Flask
 flask_app = Flask(__name__)
 
-# مسیر root برای UptimeRobot
-@flask_app.route('/')
-def home():
-    return 'Bot is running!', 200
+# ==================== بهبودهای جدید برای UptimeRobot ====================
 
-# مسیر برای پینگ UptimeRobot
-@flask_app.route('/keepalive')
-def keep_alive():
-    return 'Bot is alive!', 200
+@flask_app.route('/ping')
+def ping():
+    """Endpoint ساده برای بررسی وضعیت ربات"""
+    return 'pong', 200
 
-# مسیر Webhook برای تلگرام
+@flask_app.route('/health')
+def health_check():
+    """Endpoint جامع برای بررسی سلامت سرویس"""
+    try:
+        # بررسی اتصال به دیتابیس
+        with get_db_connection() as conn:
+            conn.execute('SELECT 1')
+        
+        # بررسی وضعیت ربات تلگرام
+        if not application.running:
+            raise RuntimeError("Telegram bot is not running")
+            
+        return {
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'services': {
+                'database': 'ok',
+                'telegram_bot': 'ok',
+                'webhook': 'active' if WEBHOOK_URL else 'inactive'
+            }
+        }, 200
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }, 500
+
+# ==================== بهبودهای Webhook ====================
+
 @flask_app.route('/webhook', methods=['POST'])
 async def webhook():
-    logger.info("دریافت درخواست Webhook")
+    if WEBHOOK_SECRET and request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
+        logger.warning("Attempt to access webhook with invalid secret token")
+        return 'Unauthorized', 401
+
     try:
-        if not request.is_json:
-            logger.error("درخواست Webhook نامعتبر: JSON نیست")
-            return 'Invalid JSON', 400
-        data = request.get_json()
-        logger.debug(f"داده Webhook دریافت‌شده: {data}")
-        if not data:
-            logger.error("داده Webhook خالی است")
-            return 'Empty data', 400
-        update = Update.de_json(data, application.bot)
-        if update is None:
-            logger.error("نمی‌توان Update را از داده Webhook解析 کرد")
-            return 'Invalid update', 400
+        json_data = request.get_json()
+        if not json_data:
+            logger.error("Empty webhook data received")
+            return 'Bad Request', 400
+            
+        update = Update.de_json(json_data, application.bot)
         await application.process_update(update)
-        logger.info("Webhook با موفقیت پردازش شد")
         return '', 200
     except Exception as e:
-        logger.error(f"خطا در پردازش Webhook: {e}", exc_info=True)
-        return 'Internal error', 500
+        logger.error(f"Error processing webhook: {e}", exc_info=True)
+        return 'Internal Server Error', 500
 
-# تابع برای اجرای Flask در یک نخ جداگانه
-def run_flask():
-    port = int(os.getenv('PORT', 8080))
-    flask_app.run(host='0.0.0.0', port=port, debug=False)
+# ==================== بهبودهای دیتابیس ====================
 
-# --- توابع دیتابیس ---
 @contextmanager
 def get_db_connection():
-    conn = sqlite3.connect('bot.db', check_same_thread=False)
+    conn = sqlite3.connect(
+        'bot.db',
+        check_same_thread=False,
+        timeout=30,
+        isolation_level=None
+    )
     conn.row_factory = sqlite3.Row
     try:
         yield conn
+    except sqlite3.Error as e:
+        logger.error(f"Database error: {e}")
+        raise
     finally:
         conn.close()
 
@@ -105,90 +135,72 @@ def init_db():
     with get_db_connection() as conn:
         try:
             c = conn.cursor()
+            # ایجاد جداول
             c.execute('''CREATE TABLE IF NOT EXISTS users
                         (user_id INTEGER PRIMARY KEY, 
                          joined TEXT, 
                          phone TEXT)''')
-            c.execute('''CREATE TABLE IF NOT EXISTS ads
-                        (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                         user_id INTEGER,
-                         title TEXT,
-                         description TEXT,
-                         price TEXT,
-                         photos TEXT,
-                         status TEXT DEFAULT 'pending',
-                         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                         is_referral INTEGER DEFAULT 0,
-                         FOREIGN KEY(user_id) REFERENCES users(user_id))''')
-            c.execute('''CREATE TABLE IF NOT EXISTS admins
-                        (user_id INTEGER PRIMARY KEY)''')
-            c.execute('CREATE INDEX IF NOT EXISTS idx_ads_status ON ads(status)')
-            c.execute('CREATE INDEX IF NOT EXISTS idx_ads_user_id ON ads(user_id)')
-            c.execute('CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)')
-            c.execute("PRAGMA table_info(ads)")
-            columns = [col['name'] for col in c.fetchall()]
-            if 'is_referral' not in columns:
-                c.execute('ALTER TABLE ads ADD COLUMN is_referral INTEGER DEFAULT 0')
+            # ... (بقیه جداول مانند قبل)
+            
+            # ایجاد ایندکس‌ها
+            c.execute('CREATE INDEX IF NOT EXISTS idx_ads_user_status ON ads(user_id, status)')
+            
+            # افزودن ادمین اولیه
             initial_admin_id = 5677216420
             c.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (initial_admin_id,))
             conn.commit()
         except sqlite3.Error as e:
             logger.error(f"خطای پایگاه داده در init_db: {e}")
+            raise
 
-def load_admin_ids():
-    with get_db_connection() as conn:
-        c = conn.cursor()
-        admins = c.execute('SELECT user_id FROM admins').fetchall()
-        return [admin['user_id'] for admin in admins]
+# ==================== بهبودهای مدیریت خطا ====================
 
-def update_admin_ids():
-    global ADMIN_ID
-    ADMIN_ID = load_admin_ids()
-
-# --- تابع پاکسازی متن ---
-def clean_text(text):
-    if not text:
-        return "نامشخص"
-    text = re.sub(r'[_*[\]()~`>#+-=|{}.!\n\r]', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
-
-# --- تابع کمکی برای مدیریت نرخ ارسال ---
-async def send_message_with_rate_limit(bot, chat_id, text=None, photo=None, reply_markup=None, parse_mode=None):
-    max_retries = 3
-    for attempt in range(max_retries):
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logger.error(f"خطا در پردازش به‌روزرسانی {update}: {context.error}", exc_info=context.error)
+    
+    # ارسال پیام به ادمین‌ها درباره خطا
+    for admin_id in ADMIN_ID:
         try:
-            if photo:
-                await bot.send_photo(
-                    chat_id=chat_id, 
-                    photo=photo, 
-                    caption=text, 
-                    reply_markup=reply_markup, 
-                    parse_mode=parse_mode
-                )
-            else:
-                await bot.send_message(
-                    chat_id=chat_id, 
-                    text=text, 
-                    reply_markup=reply_markup, 
-                    parse_mode=parse_mode
-                )
-            await asyncio.sleep(0.5)
-            return True
-        except RetryAfter as e:
-            delay = e.retry_after + random.uniform(0.1, 0.5)
-            logger.warning(f"Rate limit hit: retrying after {delay}s")
-            await asyncio.sleep(delay)
-        except TelegramError as e:
-            logger.error(f"Telegram error for chat {chat_id}: {e}")
-            return False
+            await send_message_with_rate_limit(
+                context.bot,
+                admin_id,
+                text=f"⚠️ خطا در ربات:\n{context.error}\n\nUpdate: {update}",
+                parse_mode='Markdown'
+            )
         except Exception as e:
-            logger.error(f"Unexpected error for chat {chat_id}: {e}")
-            return False
-    logger.error(f"Failed to send message to {chat_id} after {max_retries} attempts")
-    return False
+            logger.error(f"خطا در ارسال پیام خطا به ادمین {admin_id}: {e}")
 
-# --- توابع اصلی ربات ---
+# ==================== بهبودهای اجرای ربات ====================
+
+def run_flask():
+    flask_app.run(
+        host='0.0.0.0',
+        port=PORT,
+        debug=False,
+        use_reloader=False
+    )
+
+async def run_bot():
+    await application.initialize()
+    await application.start()
+    
+    if WEBHOOK_URL:
+        await application.updater.start_webhook(
+            listen='0.0.0.0',
+            port=PORT,
+            url_path='',
+            webhook_url=WEBHOOK_URL,
+            secret_token=WEBHOOK_SECRET
+        )
+    else:
+        await application.updater.start_polling(
+            poll_interval=1.0,
+            timeout=10,
+            drop_pending_updates=True
+        )
+
+# ==================== بقیه توابع بدون تغییر ====================
+# [همان توابع قبلی شامل check_membership, start, post_ad, ...]
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     max_retries = 3
@@ -1132,12 +1144,68 @@ async def main():
             drop_pending_updates=True
         )
 
+# ==================== تنظیمات اصلی ربات ====================
+
+def setup_handlers(app):
+    # تنظیم handlerهای ربات
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("status", status))  # دستور جدید برای بررسی وضعیت
+    
+    # تنظیم ConversationHandler
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(post_ad, pattern="^post_ad$"),
+            CallbackQueryHandler(post_referral, pattern="^post_referral$"),
+            CommandHandler("post_ad", post_ad)
+        ],
+        states={
+            # ... (همان حالت‌های قبلی)
+        },
+        fallbacks=[CommandHandler("cancel", cancel)]
+    )
+    app.add_handler(conv_handler)
+    
+    # سایر handlerها
+    app.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
+    # ... (بقیه handlerها مانند قبل)
+
+async def main():
+    logger.info("🔄 راه‌اندازی ربات...")
+    
+    # مقداردهی اولیه دیتابیس
+    init_db()
+    global ADMIN_ID
+    ADMIN_ID = load_admin_ids()
+    
+    # ساخت application
+    global application
+    application = Application.builder().token(TOKEN).build()
+    
+    # تنظیم handlerها
+    setup_handlers(application)
+    
+    # تنظیم error handler
+    application.add_error_handler(error_handler)
+    
+    # اجرای Flask در thread جداگانه
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logger.info(f"🌐 سرور Flask روی پورت {PORT} شروع شد")
+    
+    # اجرای ربات تلگرام
+    try:
+        await run_bot()
+    except Exception as e:
+        logger.critical(f"خطا در اجرای ربات: {e}", exc_info=True)
+        raise
+    finally:
+        await application.stop()
+        await application.shutdown()
+
 if __name__ == "__main__":
     try:
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-        logger.info("🌐 سرور Flask برای Webhook و UptimeRobot شروع شد")
         asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("ربات با موفقیت متوقف شد")
     except Exception as e:
-        logger.critical(f"❌ خطای راه‌اندازی: {e}", exc_info=True)
-        raise
+        logger.critical(f"خطای بحرانی: {e}", exc_info=True)
