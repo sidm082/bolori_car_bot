@@ -15,7 +15,7 @@ from telegram.ext import (
     ConversationHandler,
     ContextTypes
 )
-from telegram.error import TelegramError, RetryAfter
+from telegram.error import TelegramError, RetryAfter, BadRequest
 from dotenv import load_dotenv
 from flask import Flask, request
 import threading
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # بارگذاری متغیرهای محیطی
 load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # متغیر محیطی برای URL وب‌هوک
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 if not TOKEN:
     logger.error("BOT_TOKEN not found in .env file")
     raise ValueError("لطفاً توکن ربات را در فایل .env تنظیم کنید.")
@@ -49,7 +49,7 @@ CHANNEL_USERNAME = "bolori_car"
 AD_TITLE, AD_DESCRIPTION, AD_PRICE, AD_PHOTOS, AD_PHONE = range(5)
 EDIT_AD, SELECT_AD, EDIT_FIELD = range(3)
 
-# ایجاد اپلیکیشن Flask برای Webhook و UptimeRobot
+# ایجاد اپلیکیشن Flask
 flask_app = Flask(__name__)
 
 # مسیر root برای UptimeRobot
@@ -65,13 +65,30 @@ def keep_alive():
 # مسیر Webhook برای تلگرام
 @flask_app.route('/webhook', methods=['POST'])
 async def webhook():
-    update = Update.de_json(request.get_json(), application.bot)
-    await application.process_update(update)
-    return '', 200
+    logger.info("دریافت درخواست Webhook")
+    try:
+        if not request.is_json:
+            logger.error("درخواست Webhook نامعتبر: JSON نیست")
+            return 'Invalid JSON', 400
+        data = request.get_json()
+        logger.debug(f"داده Webhook دریافت‌شده: {data}")
+        if not data:
+            logger.error("داده Webhook خالی است")
+            return 'Empty data', 400
+        update = Update.de_json(data, application.bot)
+        if update is None:
+            logger.error("نمی‌توان Update را از داده Webhook解析 کرد")
+            return 'Invalid update', 400
+        await application.process_update(update)
+        logger.info("Webhook با موفقیت پردازش شد")
+        return '', 200
+    except Exception as e:
+        logger.error(f"خطا در پردازش Webhook: {e}", exc_info=True)
+        return 'Internal error', 500
 
 # تابع برای اجرای Flask در یک نخ جداگانه
 def run_flask():
-    port = int(os.getenv('PORT', 8080))  # استفاده از متغیر محیطی PORT برای Render
+    port = int(os.getenv('PORT', 8080))
     flask_app.run(host='0.0.0.0', port=port, debug=False)
 
 # --- توابع دیتابیس ---
@@ -92,7 +109,6 @@ def init_db():
                         (user_id INTEGER PRIMARY KEY, 
                          joined TEXT, 
                          phone TEXT)''')
-            
             c.execute('''CREATE TABLE IF NOT EXISTS ads
                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
                          user_id INTEGER,
@@ -104,19 +120,15 @@ def init_db():
                          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                          is_referral INTEGER DEFAULT 0,
                          FOREIGN KEY(user_id) REFERENCES users(user_id))''')
-            
             c.execute('''CREATE TABLE IF NOT EXISTS admins
                         (user_id INTEGER PRIMARY KEY)''')
-            
             c.execute('CREATE INDEX IF NOT EXISTS idx_ads_status ON ads(status)')
             c.execute('CREATE INDEX IF NOT EXISTS idx_ads_user_id ON ads(user_id)')
             c.execute('CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)')
-            
             c.execute("PRAGMA table_info(ads)")
             columns = [col['name'] for col in c.fetchall()]
             if 'is_referral' not in columns:
                 c.execute('ALTER TABLE ads ADD COLUMN is_referral INTEGER DEFAULT 0')
-            
             initial_admin_id = 5677216420
             c.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (initial_admin_id,))
             conn.commit()
@@ -222,11 +234,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📜 ثبت حواله", callback_data="post_referral")],
             [InlineKeyboardButton("🗂️ نمایش آگهی‌ها", callback_data="show_ads")]
         ]
-        
         if user.id in ADMIN_ID:
             buttons.append([InlineKeyboardButton("👨‍💼 پنل ادمین", callback_data="admin_panel")])
             buttons.append([InlineKeyboardButton("📊 آمار کاربران", callback_data="stats")])
-        
         welcome_text = (
             f"سلام {user.first_name} عزیز! 👋\n\n"
             "به ربات رسمی ثبت آگهی خودرو *اتوگالری بلوری* خوش آمدید. از طریق این ربات می‌توانید:\n"
@@ -235,13 +245,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "  - آگهی‌های ثبت‌شده را مشاهده و جست‌وجو کنید\n"
             "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:\n\n"
         )
-        
         await update.effective_message.reply_text(
             welcome_text,
             reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode="Markdown"
         )
-        
         try:
             with get_db_connection() as conn:
                 conn.execute(
@@ -258,11 +266,9 @@ async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query:
         await query.answer()
     message = update.effective_message
-    
     if not await check_membership(update, context):
         await message.reply_text("⚠️ لطفاً ابتدا در کانال عضو شوید!")
         return ConversationHandler.END
-    
     context.user_data['ad'] = {'photos': [], 'is_referral': 0}
     await message.reply_text("📝 لطفاً برند و مدل خودروی خود را وارد کنید (مثال: پژو ۲۰۶ تیپ ۲، کیا سراتو، تویوتا کمری و ...):")
     return AD_TITLE
@@ -272,11 +278,9 @@ async def post_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query:
         await query.answer()
     message = update.effective_message
-    
     if not await check_membership(update, context):
         await message.reply_text("⚠️ لطفاً ابتدا در کانال عضو شوید!")
         return ConversationHandler.END
-    
     context.user_data['ad'] = {'photos': [], 'is_referral': 1}
     await message.reply_text("📜 لطفاً برند و مدل خودروی حواله را وارد کنید (مثال: پژو ۲۰۶ تیپ ۲، کیا سراتو، تویوتا کمری و ...):")
     return AD_TITLE
@@ -285,12 +289,10 @@ async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.text:
         await update.effective_message.reply_text("لطفاً فقط متن وارد کنید.")
         return AD_TITLE
-    
     title = update.message.text.strip()
     if len(title) > 100:
         await update.effective_message.reply_text("عنوان بیش از حد طولانی است (حداکثر ۱۰۰ کاراکتر).")
         return AD_TITLE
-    
     context.user_data['ad']['temp_title'] = title
     await update.effective_message.reply_text("لطفاً اطلاعات خودرو یا حواله شامل جزئیات (مثل رنگ، کارکرد، وضعیت بدنه، وضعیت فنی یا شرایط حواله) را وارد کنید.")
     return AD_DESCRIPTION
@@ -299,12 +301,10 @@ async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_T
     if not update.message.text:
         await update.effective_message.reply_text("لطفاً فقط متن وارد کنید.")
         return AD_DESCRIPTION
-    
     description = update.message.text.strip()
     if len(description) > 1000:
         await update.effective_message.reply_text("توضیحات بیش از حد طولانی است (حداکثر ۱۰۰۰ کاراکتر).")
         return AD_DESCRIPTION
-    
     context.user_data['ad']['description'] = description
     await update.effective_message.reply_text("لطفاً قیمت خودرو یا حواله را به تومان وارد کنید:")
     return AD_PRICE
@@ -317,13 +317,11 @@ async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raise ValueError("قیمت باید مثبت باشد")
         formatted_price = f"{price_int:,}"
         context.user_data['ad']['price'] = formatted_price
-        
         if context.user_data['ad'].get('is_referral', 0):
             temp_title = context.user_data['ad']['temp_title']
             context.user_data['ad']['title'] = f"حواله‌ی {clean_text(temp_title)} با قیمت {formatted_price} تومان"
         else:
             context.user_data['ad']['title'] = context.user_data['ad']['temp_title']
-        
         await update.effective_message.reply_text(
             "لطفاً عکس خودرو یا حواله را ارسال کنید (حداکثر ۵ تصویر) (یا 'تمام' برای اتمام یا 'هیچ' اگر عکسی ندارید):"
         )
@@ -334,7 +332,6 @@ async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ad = context.user_data['ad']
-    
     if update.message.text and update.message.text.lower() == "هیچ":
         ad['photos'] = []
         return await request_phone(update, context)
@@ -365,24 +362,20 @@ async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         with get_db_connection() as conn:
             user_data = conn.execute('SELECT phone FROM users WHERE user_id = ?', (user_id,)).fetchone()
-            
             if user_data and user_data['phone']:
                 context.user_data['ad']['phone'] = user_data['phone']
                 return await save_ad(update, context)
-            
             if 'ad' not in context.user_data or not context.user_data['ad']:
                 await update.effective_message.reply_text(
                     "⚠️ داده‌های آگهی یافت نشد. لطفاً از ابتدا آگهی را ثبت کنید.",
                     reply_markup=ReplyKeyboardRemove()
                 )
                 return ConversationHandler.END
-            
             keyboard = ReplyKeyboardMarkup(
                 [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
                 resize_keyboard=True,
                 one_time_keyboard=True
             )
-            
             await update.effective_message.reply_text(
                 "📞 لطفاً شماره تلفن خود را برای ثبت آگهی یا حواله با زدن دکمه زیر ارسال کنید:",
                 reply_markup=keyboard
@@ -399,15 +392,12 @@ async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     phone = None
-    
     if update.message.contact:
         phone = update.message.contact.phone_number
     elif update.message.text:
         phone = update.message.text.strip()
-    
     phone_pattern = r'^(\+98|0)?9\d{9}$'
     cleaned_phone = phone.replace('-', '').replace(' ', '') if phone else ''
-    
     if not phone or not re.match(phone_pattern, cleaned_phone):
         keyboard = ReplyKeyboardMarkup(
             [[KeyboardButton("📞 ارسال شماره", request_contact=True)]],
@@ -419,12 +409,10 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard
         )
         return AD_PHONE
-    
     if cleaned_phone.startswith('0'):
         cleaned_phone = '+98' + cleaned_phone[1:]
     elif not cleaned_phone.startswith('+'):
         cleaned_phone = '+98' + cleaned_phone
-    
     try:
         with get_db_connection() as conn:
             conn.execute(
@@ -432,14 +420,12 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (user_id, cleaned_phone)
             )
             conn.commit()
-            
             if 'ad' not in context.user_data or not context.user_data['ad']:
                 await update.effective_message.reply_text(
                     "⚠️ داده‌های آگهی یافت نشد. لطفاً از ابتدا آگهی را ثبت کنید.",
                     reply_markup=ReplyKeyboardRemove()
                 )
                 return ConversationHandler.END
-            
             context.user_data['ad']['phone'] = cleaned_phone
             await update.effective_message.reply_text(
                 "✅ شماره تلفن با موفقیت ثبت شد. آگهی یا حواله شما در حال ارسال برای تأیید است...",
@@ -457,7 +443,6 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ad = context.user_data['ad']
     user_id = update.effective_user.id
-    
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -477,7 +462,6 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             ad_id = cursor.lastrowid
             conn.commit()
-        
             for admin_id in ADMIN_ID:
                 try:
                     await send_message_with_rate_limit(
@@ -488,7 +472,6 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 except Exception as e:
                     logger.error(f"خطا در اطلاع‌رسانی به ادمین {admin_id}: {e}")
-            
             await update.effective_message.reply_text(
                 f"با تشکر از اعتماد شما. ✅ {'حواله' if ad['is_referral'] else 'آگهی'} با موفقیت ثبت شد و در انتظار تأیید مدیر است.\n"
                 "می‌توانید از منوی اصلی برای ثبت آگهی یا حواله جدید ادامه دهید."
@@ -509,28 +492,22 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = query.message
     else:
         message = update.effective_message
-    
     if update.effective_user.id not in ADMIN_ID:
         await message.reply_text("❌ دسترسی غیرمجاز!")
         return
-    
     page = context.user_data.get('admin_page', 1)
     items_per_page = 5
     status_filter = context.user_data.get('admin_status_filter', 'pending')
-    
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            
             total_ads = cursor.execute(
                 'SELECT COUNT(*) FROM ads WHERE status = ?', 
                 (status_filter,)
             ).fetchone()[0]
-            
             total_pages = max(1, (total_ads + items_per_page - 1) // items_per_page)
             page = max(1, min(page, total_pages))
             context.user_data['admin_page'] = page
-            
             offset = (page - 1) * items_per_page
             ads = cursor.execute(
                 '''SELECT * FROM ads 
@@ -539,7 +516,6 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 LIMIT ? OFFSET ?''',
                 (status_filter, items_per_page, offset)
             ).fetchall()
-            
             if not ads:
                 await send_message_with_rate_limit(
                     context.bot,
@@ -551,22 +527,18 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ])
                 )
                 return
-            
             for ad in ads:
                 user_info = cursor.execute(
                     'SELECT phone FROM users WHERE user_id = ?', 
                     (ad['user_id'],)
                 ).fetchone()
-                
                 phone = user_info['phone'] if user_info and user_info['phone'] else "نامشخص"
                 price = ad['price'] if ad['price'] else "نامشخص"
-                
                 try:
                     user = await context.bot.get_chat(ad['user_id'])
                     username = user.username or f"{user.first_name} {user.last_name or ''}".strip() or "ناشناس"
                 except Exception:
                     username = "ناشناس"
-                
                 ad_text = (
                     f"{'📜 حواله' if ad['is_referral'] else '🆔 آگهی'}: {ad['id']}\n"
                     f"👤 کاربر: {clean_text(username)}\n"
@@ -578,7 +550,6 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"📸 تصاویر: {'دارد' if ad['photos'] else 'ندارد'}\n"
                     f"📊 وضعیت: {ad['status']}"
                 )
-                
                 buttons = [
                     [
                         InlineKeyboardButton("✅ تأیید", callback_data=f"approve_{ad['id']}"),
@@ -586,7 +557,6 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ],
                     [InlineKeyboardButton("🖼️ مشاهده تصاویر", callback_data=f"show_photos_{ad['id']}")]
                 ]
-                
                 if ad['photos']:
                     photos = ad['photos'].split(',')
                     await send_message_with_rate_limit(
@@ -605,15 +575,12 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         reply_markup=InlineKeyboardMarkup(buttons),
                         parse_mode='Markdown'
                     )
-            
             nav_buttons = []
             if page > 1:
                 nav_buttons.append(InlineKeyboardButton("⬅️ صفحه قبل", callback_data=f"page_{page-1}"))
             if page < total_pages:
                 nav_buttons.append(InlineKeyboardButton("➡️ صفحه بعد", callback_data=f"page_{page+1}"))
-            
             nav_buttons_row = [nav_buttons] if nav_buttons else []
-            
             await send_message_with_rate_limit(
                 context.bot,
                 update.effective_chat.id,
@@ -637,34 +604,26 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
     if update.effective_user.id not in ADMIN_ID:
         await query.message.reply_text("❌ دسترسی غیرمجاز!")
         return
-    
     action, ad_id = query.data.split('_')
     ad_id = int(ad_id)
-    
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            
             ad = cursor.execute(
                 'SELECT user_id, title, description, price, photos, status, created_at, is_referral FROM ads WHERE id = ?', 
                 (ad_id,)
             ).fetchone()
-            
             if not ad:
                 await query.message.reply_text("❌ آگهی یا حواله یافت نشد!")
                 return
-            
             if action == "approve":
                 new_status = "approved"
                 user_message = f"✅ {'حواله' if ad['is_referral'] else 'آگهی'} شما *{clean_text(ad['title'])}* تأیید شد و در کانال منتشر شد."
-                
                 title = clean_text(ad['title'])
                 description = clean_text(ad['description'])
-                
                 ad_text = (
                     f"{'📜 حواله' if ad['is_referral'] else '🚗 آگهی'}: {title}\n\n"
                     f"📝 توضیحات: {description}\n\n"
@@ -674,7 +633,6 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                     f"📲 +989153632957\n"
                     f"📍 @{CHANNEL_USERNAME}"
                 )
-                
                 try:
                     if ad['photos']:
                         photos = ad['photos'].split(',')
@@ -698,7 +656,6 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                             text=ad_text,
                             parse_mode='Markdown'
                         )
-                    
                     users = cursor.execute('SELECT user_id FROM users').fetchall()
                     for user in users:
                         user_id = user['user_id']
@@ -727,18 +684,15 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                                     )
                             except Exception as e:
                                 logger.error(f"خطا در ارسال آگهی یا حواله به کاربر {user_id}: {e}")
-                
                 except TelegramError as e:
                     logger.error(f"خطا در ارسال آگهی یا حواله به کانال یا کاربران: {e}")
                     await query.message.reply_text("❌ خطایی در انتشار آگهی یا حواله رخ داد.")
                     return
-                
                 cursor.execute(
                     'UPDATE ads SET status = ? WHERE id = ?',
                     (new_status, ad_id)
                 )
                 conn.commit()
-                
                 try:
                     await send_message_with_rate_limit(
                         context.bot,
@@ -748,19 +702,15 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                     )
                 except Exception as e:
                     logger.error(f"خطا در اطلاع‌رسانی به کاربر {ad['user_id']}: {e}")
-                
                 await query.message.reply_text(f"✅ {'حواله' if ad['is_referral'] else 'آگهی'} {ad_id} تأیید و در کانال و برای کاربران منتشر شد.")
-            
             elif action == "reject":
                 new_status = "rejected"
                 user_message = f"❌ {'حواله' if ad['is_referral'] else 'آگهی'} شما *{clean_text(ad['title'])}* رد شد."
-                
                 cursor.execute(
                     'UPDATE ads SET status = ? WHERE id = ?',
                     (new_status, ad_id)
                 )
                 conn.commit()
-                
                 try:
                     await send_message_with_rate_limit(
                         context.bot,
@@ -770,11 +720,8 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                     )
                 except Exception as e:
                     logger.error(f"خطا در اطلاع‌رسانی به کاربر {ad['user_id']}: {e}")
-                
                 await query.message.reply_text(f"❌ {'حواله' if ad['is_referral'] else 'آگهی'} {ad_id} رد شد.")
-            
             await admin_panel(update, context)
-    
     except sqlite3.Error as e:
         logger.error(f"خطای پایگاه داده در handle_admin_action: {e}")
         await query.message.reply_text("❌ خطایی در پردازش درخواست رخ داد.")
@@ -782,11 +729,9 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def change_status_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
     if update.effective_user.id not in ADMIN_ID:
         await query.message.reply_text("❌ دسترسی غیرمجاز!")
         return
-    
     data = query.data
     if data == "change_status":
         buttons = [
@@ -809,13 +754,10 @@ async def change_status_filter(update: Update, context: ContextTypes.DEFAULT_TYP
 async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
     if update.effective_user.id not in ADMIN_ID:
         await query.message.reply_text("❌ دسترسی غیرمجاز!")
         return
-    
     data = query.data
-    
     if data.startswith("approve_") or data.startswith("reject_"):
         await handle_admin_action(update, context)
     elif data.startswith("page_"):
@@ -831,7 +773,6 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     'SELECT photos, is_referral FROM ads WHERE id = ?', 
                     (ad_id,)
                 ).fetchone()
-                
                 if ad and ad['photos']:
                     photos = ad['photos'].split(',')
                     for photo in photos[:5]:
@@ -859,9 +800,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = query.message
     else:
         message = update.effective_message
-    
     one_year_ago = datetime.now() - timedelta(days=365)
-    
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -872,7 +811,6 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ORDER BY created_at DESC''',
                 (one_year_ago.isoformat(),)
             ).fetchall()
-            
             if not ads:
                 await send_message_with_rate_limit(
                     context.bot,
@@ -880,14 +818,12 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text="هیچ آگهی یا حواله تأیید شده‌ای یافت نشد."
                 )
                 return
-            
             for ad in ads:
                 user_info = cursor.execute(
                     'SELECT phone FROM users WHERE user_id = ?', 
                     (ad['user_id'],)
                 ).fetchone()
                 phone = clean_text(user_info['phone'] if user_info else "ناشناس")
-                
                 text = (
                     f"{'📜 حواله' if ad['is_referral'] else '📌 آگهی'}: {clean_text(ad['title'])}\n"
                     f"💬 توضیحات: {clean_text(ad['description'])}\n"
@@ -895,7 +831,6 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"📞 شماره تماس: {phone}\n"
                     f"📅 تاریخ: {ad['created_at']}"
                 )
-                
                 try:
                     if ad['photos']:
                         photos = ad['photos'].split(',')
@@ -931,20 +866,16 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = query.message
     else:
         message = update.effective_message
-    
     if update.effective_user.id not in ADMIN_ID:
         await message.reply_text("❌ دسترسی غیرمجاز!")
         return
-    
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            
             total_users = cursor.execute('SELECT COUNT(*) FROM users').fetchone()[0]
             new_users_today = cursor.execute(
                 'SELECT COUNT(*) FROM users WHERE date(joined) = date("now")'
             ).fetchone()[0]
-            
             total_ads = cursor.execute('SELECT COUNT(*) FROM ads').fetchone()[0]
             pending_ads = cursor.execute(
                 'SELECT COUNT(*) FROM ads WHERE status = "pending"'
@@ -955,9 +886,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             referral_ads = cursor.execute(
                 'SELECT COUNT(*) FROM ads WHERE is_referral = 1'
             ).fetchone()[0]
-            
             total_admins = cursor.execute('SELECT COUNT(*) FROM admins').fetchone()[0]
-            
             stats_text = (
                 "📊 آمار ربات:\n\n"
                 f"👥 تعداد کل کاربران: {total_users}\n"
@@ -968,7 +897,6 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"✅ تأیید شده: {approved_ads}\n\n"
                 f"👨‍💼 تعداد مدیران: {total_admins}"
             )
-            
             await send_message_with_rate_limit(
                 context.bot,
                 update.effective_chat.id,
@@ -987,7 +915,6 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_ID:
         await update.effective_message.reply_text("❌ دسترسی غیرمجاز!")
         return
-    
     args = context.args
     if not args or not args[0].isdigit():
         await update.effective_message.reply_text(
@@ -995,19 +922,16 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "مثال: /add_admin 123456789"
         )
         return
-    
     new_admin_id = int(args[0])
     if new_admin_id in ADMIN_ID:
         await update.effective_message.reply_text("⚠️ این کاربر قبلاً مدیر است.")
         return
-    
     try:
         with get_db_connection() as conn:
             conn.execute('INSERT INTO admins (user_id) VALUES (?)', (new_admin_id,))
             conn.commit()
         update_admin_ids()
         await update.effective_message.reply_text(f"✅ کاربر با شناسه {new_admin_id} به عنوان مدیر اضافه شد.")
-        
         try:
             await send_message_with_rate_limit(
                 context.bot,
@@ -1026,7 +950,6 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_ID:
         await update.effective_message.reply_text("❌ دسترسی غیرمجاز!")
         return
-    
     args = context.args
     if not args or not args[0].isdigit():
         await update.effective_message.reply_text(
@@ -1034,27 +957,22 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "مثال: /remove_admin 123456789"
         )
         return
-    
     admin_id_to_remove = int(args[0])
     if admin_id_to_remove not in ADMIN_ID:
         await update.effective_message.reply_text("⚠️ این کاربر مدیر نیست.")
         return
-    
     if admin_id_to_remove == update.effective_user.id:
         await update.effective_message.reply_text("⚠️ شما نمی‌توانید خودتان را از مدیریت حذف کنید!")
         return
-    
     if len(ADMIN_ID) <= 1:
         await update.effective_message.reply_text("⚠️ نمی‌توان آخرین مدیر را حذف کرد!")
         return
-    
     try:
         with get_db_connection() as conn:
             conn.execute('DELETE FROM admins WHERE user_id = ?', (admin_id_to_remove,))
             conn.commit()
         update_admin_ids()
         await update.effective_message.reply_text(f"✅ کاربر با شناسه {admin_id_to_remove} از لیست مدیران حذف شد.")
-        
         try:
             await send_message_with_rate_limit(
                 context.bot,
@@ -1078,7 +996,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"خطا در پردازش به‌روزرسانی {update}: {context.error}", exc_info=context.error)
-    
     if update and update.effective_message:
         try:
             await update.effective_message.reply_text(
@@ -1090,30 +1007,25 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
     if not query.data.startswith("show_photos_"):
         logger.error(f"Invalid callback data: {query.data}")
         await query.message.reply_text("❌ خطای ناشناخته در پردازش درخواست.")
         return
-    
     try:
         ad_id = int(query.data.split('_')[2])
     except (IndexError, ValueError) as e:
         logger.error(f"Invalid ad_id in callback data: {query.data}, error: {e}")
         await query.message.reply_text("❌ خطای ناشناخته در پردازش درخواست.")
         return
-    
     try:
         with get_db_connection() as conn:
             ad = conn.execute(
                 'SELECT photos, is_referral FROM ads WHERE id = ?', 
                 (ad_id,)
             ).fetchone()
-            
             if not ad or not ad['photos']:
                 await query.message.reply_text("این آگهی یا حواله عکسی ندارد!")
                 return
-            
             photos = ad['photos'].split(',')
             for photo in photos[:5]:
                 await send_message_with_rate_limit(
@@ -1132,16 +1044,27 @@ async def main():
     init_db()
     global ADMIN_ID
     ADMIN_ID = load_admin_ids()
-    
     global application
     application = Application.builder().token(TOKEN).build()
-    
+    logger.info(f"WEBHOOK_URL تنظیم‌شده: {WEBHOOK_URL}")
     if WEBHOOK_URL:
         try:
             await application.bot.set_webhook(url=WEBHOOK_URL)
             logger.info(f"✅ Webhook تنظیم شد: {WEBHOOK_URL}")
-        except Exception as e:
+        except BadRequest as e:
             logger.error(f"خطا در تنظیم Webhook: {e}")
+            logger.warning("⚠️ سوئیچ به حالت Polling به دلیل خطای Webhook")
+            await application.bot.delete_webhook()
+            await application.initialize()
+            await application.start()
+            await application.updater.start_polling(
+                poll_interval=1.0,
+                timeout=10,
+                drop_pending_updates=True
+            )
+            return
+        except Exception as e:
+            logger.error(f"خطای غیرمنتظره در تنظیم Webhook: {e}")
             raise
     else:
         try:
@@ -1149,8 +1072,8 @@ async def main():
             logger.info("✅ Webhook غیرفعال شد")
         except Exception as e:
             logger.error(f"خطا در غیرفعال‌سازی Webhook: {e}")
-
-    conv_handler = ConversationHandler(
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(ConversationHandler(
         entry_points=[
             CallbackQueryHandler(post_ad, pattern="^post_ad$"),
             CallbackQueryHandler(post_referral, pattern="^post_referral$"),
@@ -1180,10 +1103,7 @@ async def main():
             MessageHandler(filters.COMMAND, cancel)
         ],
         per_message=False
-    )
-    
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(conv_handler)
+    ))
     application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
     application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
     application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve_|reject_|page_|change_status|status_|show_photos_|admin_exit)"))
@@ -1193,9 +1113,7 @@ async def main():
     application.add_handler(CommandHandler("remove_admin", remove_admin))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CallbackQueryHandler(show_ad_photos, pattern="^show_photos_"))
-    
     application.add_error_handler(error_handler)
-    
     if WEBHOOK_URL:
         logger.info("🚀 سرور Webhook شروع شد...")
         await application.initialize()
@@ -1212,12 +1130,9 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        # شروع سرور Flask در یک نخ جداگانه
         flask_thread = threading.Thread(target=run_flask, daemon=True)
         flask_thread.start()
         logger.info("🌐 سرور Flask برای Webhook و UptimeRobot شروع شد")
-        
-        # اجرای ربات
         asyncio.run(main())
     except Exception as e:
         logger.critical(f"❌ خطای راه‌اندازی: {e}", exc_info=True)
