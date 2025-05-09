@@ -15,7 +15,7 @@ from telegram.ext import (
     ConversationHandler,
     ContextTypes
 )
-from telegram.error import Telegram , TelegramError, RetryAfter
+from telegram.error import TelegramError, RetryAfter
 from dotenv import load_dotenv
 from flask import Flask, request
 import threading
@@ -280,8 +280,6 @@ async def post_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['ad'] = {'photos': [], 'is_referral': 1}
     await message.reply_text("📜 لطفاً برند و مدل خودروی حواله را وارد کنید (مثال: پژو ۲۰۶ تیپ ۲، کیا سراتو، تویوتا کمری و ...):")
     return AD_TITLE
-
-async def receive_ad_title(update: Update, context: ContextTypes
 
 async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.text:
