@@ -1046,6 +1046,10 @@ async def main():
     ADMIN_ID = load_admin_ids()
     global application
     application = Application.builder().token(TOKEN).build()
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logger.info("🌐 سرور Flask برای Webhook و UptimeRobot شروع شد")
+
     logger.info(f"WEBHOOK_URL تنظیم‌شده: {WEBHOOK_URL}")
     if WEBHOOK_URL:
         try:
