@@ -15,9 +15,9 @@ from telegram.ext import (
     ConversationHandler,
     ContextTypes
 )
-from telegram.error import TelegramError, RetryAfter
+from telegram.error import Telegram  import TelegramError, RetryAfter
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, request
 import threading
 import nest_asyncio
 from contextlib import contextmanager
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # بارگذاری متغیرهای محیطی
 load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # متغیر محیطی برای URL وب‌هوک (مثلاً https://your-app.onrender.com/webhook)
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # متغیر محیطی برای URL وب‌هوک
 if not TOKEN:
     logger.error("BOT_TOKEN not found in .env file")
     raise ValueError("لطفاً توکن ربات را در فایل .env تنظیم کنید.")
@@ -65,7 +65,7 @@ def keep_alive():
 # مسیر Webhook برای تلگرام
 @flask_app.route('/webhook', methods=['POST'])
 async def webhook():
-    update = Update.de_json(flask_app.request.get_json(), application.bot)
+    update = Update.de_json(request.get_json(), application.bot)
     await application.process_update(update)
     return '', 200
 
@@ -225,7 +225,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if user.id in ADMIN_ID:
             buttons.append([InlineKeyboardButton("👨‍💼 پنل ادمین", callback_data="admin_panel")])
-            buttons.append([InlineKeyboardButton("📊 آمار کاربران", callback reveal.js"></script> callback_data="stats")]
+            buttons.append([InlineKeyboardButton("📊 آمار کاربران", callback_data="stats")])
         
         welcome_text = (
             f"سلام {user.first_name} عزیز! 👋\n\n"
@@ -280,6 +280,8 @@ async def post_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['ad'] = {'photos': [], 'is_referral': 1}
     await message.reply_text("📜 لطفاً برند و مدل خودروی حواله را وارد کنید (مثال: پژو ۲۰۶ تیپ ۲، کیا سراتو، تویوتا کمری و ...):")
     return AD_TITLE
+
+async def receive_ad_title(update: Update, context: ContextTypes
 
 async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.text:
@@ -583,7 +585,6 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     [
                         InlineKeyboardButton("✅ تأیید", callback_data=f"approve_{ad['id']}"),
                         InlineKeyboardButton("❌ رد", callback_data=f"reject_{ad['id']}")
-
                     ],
                     [InlineKeyboardButton("🖼️ مشاهده تصاویر", callback_data=f"show_photos_{ad['id']}")]
                 ]
@@ -656,7 +657,476 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             ).fetchone()
             
             if not ad:
-                await query.message.reply_text}')
+                await query.message.reply_text("❌ آگهی یا حواله یافت نشد!")
+                return
+            
+            if action == "approve":
+                new_status = "approved"
+                user_message = f"✅ {'حواله' if ad['is_referral'] else 'آگهی'} شما *{clean_text(ad['title'])}* تأیید شد و در کانال منتشر شد."
+                
+                title = clean_text(ad['title'])
+                description = clean_text(ad['description'])
+                
+                ad_text = (
+                    f"{'📜 حواله' if ad['is_referral'] else '🚗 آگهی'}: {title}\n\n"
+                    f"📝 توضیحات: {description}\n\n"
+                    f"➖➖➖➖➖\n"
+                    f"☑️ اتوگالری بلوری\n"
+                    f"▫️خرید▫️فروش▫️کارشناسی\n"
+                    f"📲 +989153632957\n"
+                    f"📍 @{CHANNEL_USERNAME}"
+                )
+                
+                try:
+                    if ad['photos']:
+                        photos = ad['photos'].split(',')
+                        await send_message_with_rate_limit(
+                            context.bot,
+                            CHANNEL_ID,
+                            photo=photos[0],
+                            text=ad_text,
+                            parse_mode='Markdown'
+                        )
+                        for photo in photos[1:3]:
+                            await send_message_with_rate_limit(
+                                context.bot,
+                                CHANNEL_ID,
+                                photo=photo
+                            )
+                    else:
+                        await send_message_with_rate_limit(
+                            context.bot,
+                            CHANNEL_ID,
+                            text=ad_text,
+                            parse_mode='Markdown'
+                        )
+                    
+                    users = cursor.execute('SELECT user_id FROM users').fetchall()
+                    for user in users:
+                        user_id = user['user_id']
+                        if user_id != ad['user_id']:
+                            try:
+                                if ad['photos']:
+                                    await send_message_with_rate_limit(
+                                        context.bot,
+                                        user_id,
+                                        text=ad_text,
+                                        photo=photos[0],
+                                        parse_mode='Markdown'
+                                    )
+                                    for photo in photos[1:3]:
+                                        await send_message_with_rate_limit(
+                                            context.bot,
+                                            user_id,
+                                            photo=photo
+                                        )
+                                else:
+                                    await send_message_with_rate_limit(
+                                        context.bot,
+                                        user_id,
+                                        text=ad_text,
+                                        parse_mode='Markdown'
+                                    )
+                            except Exception as e:
+                                logger.error(f"خطا در ارسال آگهی یا حواله به کاربر {user_id}: {e}")
+                
+                except TelegramError as e:
+                    logger.error(f"خطا در ارسال آگهی یا حواله به کانال یا کاربران: {e}")
+                    await query.message.reply_text("❌ خطایی در انتشار آگهی یا حواله رخ داد.")
+                    return
+                
+                cursor.execute(
+                    'UPDATE ads SET status = ? WHERE id = ?',
+                    (new_status, ad_id)
+                )
+                conn.commit()
+                
+                try:
+                    await send_message_with_rate_limit(
+                        context.bot,
+                        ad['user_id'],
+                        text=user_message,
+                        parse_mode='Markdown'
+                    )
+                except Exception as e:
+                    logger.error(f"خطا در اطلاع‌رسانی به کاربر {ad['user_id']}: {e}")
+                
+                await query.message.reply_text(f"✅ {'حواله' if ad['is_referral'] else 'آگهی'} {ad_id} تأیید و در کانال و برای کاربران منتشر شد.")
+            
+            elif action == "reject":
+                new_status = "rejected"
+                user_message = f"❌ {'حواله' if ad['is_referral'] else 'آگهی'} شما *{clean_text(ad['title'])}* رد شد."
+                
+                cursor.execute(
+                    'UPDATE ads SET status = ? WHERE id = ?',
+                    (new_status, ad_id)
+                )
+                conn.commit()
+                
+                try:
+                    await send_message_with_rate_limit(
+                        context.bot,
+                        ad['user_id'],
+                        text=user_message,
+                        parse_mode='Markdown'
+                    )
+                except Exception as e:
+                    logger.error(f"خطا در اطلاع‌رسانی به کاربر {ad['user_id']}: {e}")
+                
+                await query.message.reply_text(f"❌ {'حواله' if ad['is_referral'] else 'آگهی'} {ad_id} رد شد.")
+            
+            await admin_panel(update, context)
+    
+    except sqlite3.Error as e:
+        logger.error(f"خطای پایگاه داده در handle_admin_action: {e}")
+        await query.message.reply_text("❌ خطایی در پردازش درخواست رخ داد.")
+
+async def change_status_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if update.effective_user.id not in ADMIN_ID:
+        await query.message.reply_text("❌ دسترسی غیرمجاز!")
+        return
+    
+    data = query.data
+    if data == "change_status":
+        buttons = [
+            [InlineKeyboardButton("⏳ در انتظار", callback_data="status_pending")],
+            [InlineKeyboardButton("✅ تأیید شده", callback_data="status_approved")],
+            [InlineKeyboardButton("❌ رد شده", callback_data="status_rejected")],
+            [InlineKeyboardButton("🏠 بازگشت", callback_data="admin_exit")]
+        ]
+        await send_message_with_rate_limit(
+            context.bot,
+            query.message.chat_id,
+            text="📊 وضعیت مورد نظر را انتخاب کنید:",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+    elif data.startswith("status_"):
+        context.user_data['admin_status_filter'] = data.split('_')[1]
+        context.user_data['admin_page'] = 1
+        await admin_panel(update, context)
+
+async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if update.effective_user.id not in ADMIN_ID:
+        await query.message.reply_text("❌ دسترسی غیرمجاز!")
+        return
+    
+    data = query.data
+    
+    if data.startswith("approve_") or data.startswith("reject_"):
+        await handle_admin_action(update, context)
+    elif data.startswith("page_"):
+        context.user_data['admin_page'] = int(data.split('_')[1])
+        await admin_panel(update, context)
+    elif data == "change_status" or data.startswith("status_"):
+        await change_status_filter(update, context)
+    elif data.startswith("show_photos_"):
+        ad_id = int(data.split('_')[2])
+        try:
+            with get_db_connection() as conn:
+                ad = conn.execute(
+                    'SELECT photos, is_referral FROM ads WHERE id = ?', 
+                    (ad_id,)
+                ).fetchone()
+                
+                if ad and ad['photos']:
+                    photos = ad['photos'].split(',')
+                    for photo in photos[:5]:
+                        await send_message_with_rate_limit(
+                            context.bot,
+                            update.effective_chat.id,
+                            text=f"تصاویر {'حواله' if ad['is_referral'] else 'آگهی'} {ad_id}",
+                            photo=photo
+                        )
+                else:
+                    await query.message.reply_text("📸 این آگهی یا حواله هیچ تصویری ندارد.")
+        except Exception as e:
+            logger.error(f"خطا در نمایش تصاویر: {e}")
+            await query.message.reply_text("❌ خطایی در نمایش تصاویر رخ داد.")
+    elif data == "admin_exit":
+        await query.message.reply_text("🏠 بازگشت به منوی اصلی.")
+        await start(update, context)
+    elif data == "admin_panel":
+        await admin_panel(update, context)
+
+async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+        message = query.message
+    else:
+        message = update.effective_message
+    
+    one_year_ago = datetime.now() - timedelta(days=365)
+    
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            ads = cursor.execute(
+                '''SELECT * FROM ads 
+                WHERE status = 'approved' 
+                AND datetime(created_at) >= ? 
+                ORDER BY created_at DESC''',
+                (one_year_ago.isoformat(),)
+            ).fetchall()
+            
+            if not ads:
+                await send_message_with_rate_limit(
+                    context.bot,
+                    update.effective_chat.id,
+                    text="هیچ آگهی یا حواله تأیید شده‌ای یافت نشد."
+                )
+                return
+            
+            for ad in ads:
+                user_info = cursor.execute(
+                    'SELECT phone FROM users WHERE user_id = ?', 
+                    (ad['user_id'],)
+                ).fetchone()
+                phone = clean_text(user_info['phone'] if user_info else "ناشناس")
+                
+                text = (
+                    f"{'📜 حواله' if ad['is_referral'] else '📌 آگهی'}: {clean_text(ad['title'])}\n"
+                    f"💬 توضیحات: {clean_text(ad['description'])}\n"
+                    f"💰 قیمت: {clean_text(ad['price'])} تومان\n"
+                    f"📞 شماره تماس: {phone}\n"
+                    f"📅 تاریخ: {ad['created_at']}"
+                )
+                
+                try:
+                    if ad['photos']:
+                        photos = ad['photos'].split(',')
+                        for photo in photos[:3]:
+                            await send_message_with_rate_limit(
+                                context.bot,
+                                update.effective_chat.id,
+                                text=text,
+                                photo=photo,
+                                parse_mode='Markdown'
+                            )
+                    else:
+                        await send_message_with_rate_limit(
+                            context.bot,
+                            update.effective_chat.id,
+                            text=text,
+                            parse_mode='Markdown'
+                        )
+                except Exception as e:
+                    logger.error(f"ارسال آگهی یا حواله {ad['id']} ناموفق بود: {e}")
+    except sqlite3.Error as e:
+        logger.error(f"خطای پایگاه داده در show_ads: {e}")
+        await send_message_with_rate_limit(
+            context.bot,
+            update.effective_chat.id,
+            text="❌ خطایی در نمایش آگهی‌ها یا حواله‌ها رخ داد."
+        )
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+        message = query.message
+    else:
+        message = update.effective_message
+    
+    if update.effective_user.id not in ADMIN_ID:
+        await message.reply_text("❌ دسترسی غیرمجاز!")
+        return
+    
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            total_users = cursor.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+            new_users_today = cursor.execute(
+                'SELECT COUNT(*) FROM users WHERE date(joined) = date("now")'
+            ).fetchone()[0]
+            
+            total_ads = cursor.execute('SELECT COUNT(*) FROM ads').fetchone()[0]
+            pending_ads = cursor.execute(
+                'SELECT COUNT(*) FROM ads WHERE status = "pending"'
+            ).fetchone()[0]
+            approved_ads = cursor.execute(
+                'SELECT COUNT(*) FROM ads WHERE status = "approved"'
+            ).fetchone()[0]
+            referral_ads = cursor.execute(
+                'SELECT COUNT(*) FROM ads WHERE is_referral = 1'
+            ).fetchone()[0]
+            
+            total_admins = cursor.execute('SELECT COUNT(*) FROM admins').fetchone()[0]
+            
+            stats_text = (
+                "📊 آمار ربات:\n\n"
+                f"👥 تعداد کل کاربران: {total_users}\n"
+                f"🆕 کاربران جدید امروز: {new_users_today}\n\n"
+                f"📝 تعداد کل آگهی‌ها و حواله‌ها: {total_ads}\n"
+                f"📜 تعداد حواله‌ها: {referral_ads}\n"
+                f"⏳ در انتظار تأیید: {pending_ads}\n"
+                f"✅ تأیید شده: {approved_ads}\n\n"
+                f"👨‍💼 تعداد مدیران: {total_admins}"
+            )
+            
+            await send_message_with_rate_limit(
+                context.bot,
+                update.effective_chat.id,
+                text=stats_text,
+                parse_mode='Markdown'
+            )
+    except sqlite3.Error as e:
+        logger.error(f"خطای پایگاه داده در stats: {e}")
+        await send_message_with_rate_limit(
+            context.bot,
+            update.effective_chat.id,
+            text="❌ خطایی در نمایش آمار رخ داد."
+        )
+
+async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_ID:
+        await update.effective_message.reply_text("❌ دسترسی غیرمجاز!")
+        return
+    
+    args = context.args
+    if not args or not args[0].isdigit():
+        await update.effective_message.reply_text(
+            "⚠️ لطفاً شناسه کاربر را وارد کنید:\n"
+            "مثال: /add_admin 123456789"
+        )
+        return
+    
+    new_admin_id = int(args[0])
+    if new_admin_id in ADMIN_ID:
+        await update.effective_message.reply_text("⚠️ این کاربر قبلاً مدیر است.")
+        return
+    
+    try:
+        with get_db_connection() as conn:
+            conn.execute('INSERT INTO admins (user_id) VALUES (?)', (new_admin_id,))
+            conn.commit()
+        update_admin_ids()
+        await update.effective_message.reply_text(f"✅ کاربر با شناسه {new_admin_id} به عنوان مدیر اضافه شد.")
+        
+        try:
+            await send_message_with_rate_limit(
+                context.bot,
+                new_admin_id,
+                text=f"🎉 شما به عنوان مدیر ربات اتوگالری بلوری منصوب شدید!\n"
+                     f"برای دسترسی به پنل مدیریت از دستور /admin استفاده کنید.",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.error(f"اطلاع‌رسانی به مدیر جدید {new_admin_id} ناموفق بود: {e}")
+    except sqlite3.Error as e:
+        logger.error(f"خطای پایگاه داده در add_admin: {e}")
+        await update.effective_message.reply_text("❌ خطایی در افزودن مدیر رخ داد.")
+
+async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_ID:
+        await update.effective_message.reply_text("❌ دسترسی غیرمجاز!")
+        return
+    
+    args = context.args
+    if not args or not args[0].isdigit():
+        await update.effective_message.reply_text(
+            "⚠️ لطفاً شناسه کاربر را وارد کنید:\n"
+            "مثال: /remove_admin 123456789"
+        )
+        return
+    
+    admin_id_to_remove = int(args[0])
+    if admin_id_to_remove not in ADMIN_ID:
+        await update.effective_message.reply_text("⚠️ این کاربر مدیر نیست.")
+        return
+    
+    if admin_id_to_remove == update.effective_user.id:
+        await update.effective_message.reply_text("⚠️ شما نمی‌توانید خودتان را از مدیریت حذف کنید!")
+        return
+    
+    if len(ADMIN_ID) <= 1:
+        await update.effective_message.reply_text("⚠️ نمی‌توان آخرین مدیر را حذف کرد!")
+        return
+    
+    try:
+        with get_db_connection() as conn:
+            conn.execute('DELETE FROM admins WHERE user_id = ?', (admin_id_to_remove,))
+            conn.commit()
+        update_admin_ids()
+        await update.effective_message.reply_text(f"✅ کاربر با شناسه {admin_id_to_remove} از لیست مدیران حذف شد.")
+        
+        try:
+            await send_message_with_rate_limit(
+                context.bot,
+                admin_id_to_remove,
+                text="❌ دسترسی مدیریت شما برای ربات اتوگالری بلوری لغو شد.",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.error(f"اطلاع‌رسانی به مدیر حذف‌شده {admin_id_to_remove} ناموفق بود: {e}")
+    except sqlite3.Error as e:
+        logger.error(f"خطای پایگاه داده در remove_admin: {e}")
+        await update.effective_message.reply_text("❌ خطایی در حذف مدیر رخ داد.")
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    await update.effective_message.reply_text(
+        "❌ عملیات فعلی لغو شد.",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logger.error(f"خطا در پردازش به‌روزرسانی {update}: {context.error}", exc_info=context.error)
+    
+    if update and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "⚠️ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید."
+            )
+        except Exception:
+            pass
+
+async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if not query.data.startswith("show_photos_"):
+        logger.error(f"Invalid callback data: {query.data}")
+        await query.message.reply_text("❌ خطای ناشناخته در پردازش درخواست.")
+        return
+    
+    try:
+        ad_id = int(query.data.split('_')[2])
+    except (IndexError, ValueError) as e:
+        logger.error(f"Invalid ad_id in callback data: {query.data}, error: {e}")
+        await query.message.reply_text("❌ خطای ناشناخته در پردازش درخواست.")
+        return
+    
+    try:
+        with get_db_connection() as conn:
+            ad = conn.execute(
+                'SELECT photos, is_referral FROM ads WHERE id = ?', 
+                (ad_id,)
+            ).fetchone()
+            
+            if not ad or not ad['photos']:
+                await query.message.reply_text("این آگهی یا حواله عکسی ندارد!")
+                return
+            
+            photos = ad['photos'].split(',')
+            for photo in photos[:5]:
+                await send_message_with_rate_limit(
+                    context.bot,
+                    query.message.chat_id,
+                    photo=photo,
+                    text=f"تصویر {'حواله' if ad['is_referral'] else 'آگهی'} {ad_id}"
+                )
+    except Exception as e:
+        logger.error(f"خطا در نمایش تصاویر آگهی یا حواله {ad_id}: {e}")
+        await query.message.reply_text("❌ خطایی در نمایش تصاویر رخ داد.")
 
 # --- تنظیمات اصلی ربات ---
 async def main():
@@ -665,6 +1135,7 @@ async def main():
     global ADMIN_ID
     ADMIN_ID = load_admin_ids()
     
+    global application
     application = Application.builder().token(TOKEN).build()
     
     if WEBHOOK_URL:
@@ -710,7 +1181,7 @@ async def main():
             CommandHandler("cancel", cancel),
             MessageHandler(filters.COMMAND, cancel)
         ],
-        per_message=False  # غیرفعال کردن per_message=True برای رفع هشدار
+        per_message=False
     )
     
     application.add_handler(CommandHandler("start", start))
@@ -731,7 +1202,6 @@ async def main():
         logger.info("🚀 سرور Webhook شروع شد...")
         await application.initialize()
         await application.start()
-        # Webhook نیازی به Polling ندارد
     else:
         logger.info("🚀 شروع Polling...")
         await application.initialize()
