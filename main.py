@@ -18,7 +18,6 @@ from telegram.ext import (
 from telegram.error import TelegramError, RetryAfter, BadRequest
 from dotenv import load_dotenv
 from flask import Flask, request
-import threading
 import nest_asyncio
 from contextlib import contextmanager
 
@@ -56,7 +55,7 @@ EDIT_AD, SELECT_AD, EDIT_FIELD = range(3)
 flask_app = Flask(__name__)
 
 # متغیر جهانی برای اپلیکیشن تلگرام
-application = None
+_application = None
 
 # لیست ادمین‌ها
 ADMIN_ID = []
@@ -110,6 +109,77 @@ def update_admin_ids():
     global ADMIN_ID
     ADMIN_ID = load_admin_ids()
 
+# ==================== توابع دسترسی به اپلیکیشن تلگرام ====================
+
+def get_application():
+    """دریافت یا مقداردهی اپلیکیشن تلگرام"""
+    global _application
+    if _application is None:
+        logger.info("🔄 مقداردهی اولیه اپلیکیشن تلگرام...")
+        loop = asyncio.get_event_loop()
+        _application = Application.builder().token(TOKEN).build()
+
+        # ثبت handlerها
+        _application.add_handler(CommandHandler("start", start))
+        _application.add_handler(ConversationHandler(
+            entry_points=[
+                CallbackQueryHandler(post_ad, pattern="^post_ad$"),
+                CallbackQueryHandler(post_referral, pattern="^post_referral$"),
+                CommandHandler("post_ad", post_ad)
+            ],
+            states={
+                AD_TITLE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)
+                ],
+                AD_DESCRIPTION: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)
+                ],
+                AD_PRICE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)
+                ],
+                AD_PHOTOS: [
+                    MessageHandler(filters.PHOTO, receive_ad_photos),
+                    MessageHandler(filters.Regex('^(تمام|هیچ)$'), receive_ad_photos)
+                ],
+                AD_PHONE: [
+                    MessageHandler(filters.CONTACT, receive_phone),
+                    MessageHandler(filters.Regex(r'^(\+98|0)?9\d{9}$'), receive_phone)
+                ],
+            },
+            fallbacks=[
+                CommandHandler("cancel", cancel),
+                MessageHandler(filters.COMMAND, cancel)
+            ],
+            per_message=False
+        ))
+        _application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
+        _application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
+        _application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve_|reject_|page_|change_status|status_|show_photos_|admin_exit)"))
+        _application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
+        _application.add_handler(CommandHandler("admin", admin_panel))
+        _application.add_handler(CommandHandler("add_admin", add_admin))
+        _application.add_handler(CommandHandler("remove_admin", remove_admin))
+        _application.add_handler(CommandHandler("stats", stats))
+        _application.add_handler(CallbackQueryHandler(show_ad_photos, pattern="^show_photos_"))
+        _application.add_error_handler(error_handler)
+
+        # مقداردهی اولیه اپلیکیشن
+        loop.run_until_complete(_application.initialize())
+        loop.run_until_complete(_application.start())
+        
+        # تنظیم وب‌هوک
+        if WEBHOOK_URL:
+            try:
+                loop.run_until_complete(_application.bot.set_webhook(
+                    url=WEBHOOK_URL,
+                    secret_token=WEBHOOK_SECRET
+                ))
+                logger.info("وب‌هوک با موفقیت تنظیم شد.")
+            except TelegramError as e:
+                logger.error(f"خطا در تنظیم وب‌هوک: {e}")
+                raise
+    return _application
+
 # ==================== بهبودهای جدید برای UptimeRobot ====================
 
 @flask_app.route('/ping')
@@ -126,7 +196,8 @@ def health_check():
             conn.execute('SELECT 1')
         
         # بررسی وضعیت ربات تلگرام
-        if not application or not application.running:
+        app = get_application()
+        if not app.running:
             raise RuntimeError("Telegram bot is not running")
             
         return {
@@ -160,6 +231,7 @@ async def webhook():
             logger.error("Empty webhook data received")
             return 'Bad Request', 400
             
+        application = get_application()
         update = Update.de_json(json_data, application.bot)
         await application.process_update(update)
         return '', 200
@@ -296,7 +368,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.commit()
         except sqlite3.Error as e:
             logger.error(f"خطای پایگاه داده در start: {e}")
-            await update.effective_message.reply_text束
+            await update.effective_message.reply_text("❌ خطایی در ثبت اطلاعات رخ داد.")
 
 async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1080,90 +1152,8 @@ async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"خطا در نمایش تصاویر آگهی یا حواله {ad_id}: {e}")
         await query.message.reply_text("❌ خطایی در نمایش تصاویر رخ داد.")
 
-# ==================== تنظیمات اصلی ربات ====================
+# ==================== تنظیمات اولیه ====================
 
-async def init_bot():
-    """راه‌اندازی اپلیکیشن تلگرام"""
-    global application, ADMIN_ID
-    logger.info("🔄 راه‌اندازی ربات...")
-    init_db()
-    ADMIN_ID = load_admin_ids()
-    application = Application.builder().token(TOKEN).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(ConversationHandler(
-        entry_points=[
-            CallbackQueryHandler(post_ad, pattern="^post_ad$"),
-            CallbackQueryHandler(post_referral, pattern="^post_referral$"),
-            CommandHandler("post_ad", post_ad)
-        ],
-        states={
-            AD_TITLE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)
-            ],
-            AD_DESCRIPTION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)
-            ],
-            AD_PRICE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)
-            ],
-            AD_PHOTOS: [
-                MessageHandler(filters.PHOTO, receive_ad_photos),
-                MessageHandler(filters.Regex('^(تمام|هیچ)$'), receive_ad_photos)
-            ],
-            AD_PHONE: [
-                MessageHandler(filters.CONTACT, receive_phone),
-                MessageHandler(filters.Regex(r'^(\+98|0)?9\d{9}$'), receive_phone)
-            ],
-        },
-        fallbacks=[
-            CommandHandler("cancel", cancel),
-            MessageHandler(filters.COMMAND, cancel)
-        ],
-        per_message=False
-    ))
-    application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
-    application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
-    application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve_|reject_|page_|change_status|status_|show_photos_|admin_exit)"))
-    application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
-    application.add_handler(CommandHandler("admin", admin_panel))
-    application.add_handler(CommandHandler("add_admin", add_admin))
-    application.add_handler(CommandHandler("remove_admin", remove_admin))
-    application.add_handler(CommandHandler("stats", stats))
-    application.add_handler(CallbackQueryHandler(show_ad_photos, pattern="^show_photos_"))
-    application.add_error_handler(error_handler)
-
-    await application.initialize()
-    await application.start()
-    
-    if WEBHOOK_URL:
-        try:
-            await application.bot.set_webhook(
-                url=WEBHOOK_URL,
-                secret_token=WEBHOOK_SECRET
-            )
-            logger.info("وب‌هوک با موفقیت تنظیم شد.")
-        except TelegramError as e:
-            logger.error(f"خطا در تنظیم وب‌هوک: {e}")
-            raise
-
-async def run_bot_loop():
-    """حلقه انتظار برای نگه داشتن ربات در حالت فعال"""
-    try:
-        while True:
-            await asyncio.sleep(3600)  # هر ساعت بررسی می‌کنه
-    except asyncio.CancelledError:
-        logger.info("حلقه انتظار ربات متوقف شد.")
-        await application.stop()
-        await application.shutdown()
-
-def start_bot():
-    """تابع شروع ربات در نخ جداگانه"""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(init_bot())
-    loop.run_until_complete(run_bot_loop())
-
-# شروع ربات در نخ جداگانه هنگام بارگذاری ماژول
-bot_thread = threading.Thread(target=start_bot, daemon=True)
-bot_thread.start()
+# مقداردهی اولیه دیتابیس و ادمین‌ها
+init_db()
+update_admin_ids()
