@@ -17,9 +17,11 @@ from telegram.ext import (
 )
 from telegram.error import TelegramError, RetryAfter, BadRequest
 from dotenv import load_dotenv
-from flask import Flask, request
+from flask import Flask, request, Response
 import nest_asyncio
 from contextlib import contextmanager
+from queue import Queue
+import time
 
 # اعمال nest_asyncio برای اجازه دادن به حلقه‌های تو در تو
 nest_asyncio.apply()
@@ -30,6 +32,9 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# فعال‌سازی لاگ دیباگ برای python-telegram-bot (موقت برای اشکال‌زدایی)
+logging.getLogger('telegram').setLevel(logging.DEBUG)
 
 # بارگذاری متغیرهای محیطی
 load_dotenv()
@@ -56,6 +61,9 @@ flask_app = Flask(__name__)
 
 # متغیر جهانی برای اپلیکیشن تلگرام
 _application = None
+
+# صف برای پردازش به‌روزرسانی‌ها
+update_queue = Queue()
 
 # لیست ادمین‌ها
 ADMIN_ID = []
@@ -150,7 +158,7 @@ def get_application():
                 CommandHandler("cancel", cancel),
                 MessageHandler(filters.COMMAND, cancel)
             ],
-            per_message=False
+            per_message=True  # تغییر برای ردیابی بهتر Callbackها
         ))
         _application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
         _application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
@@ -221,28 +229,47 @@ def health_check():
 
 @flask_app.route('/webhook', methods=['POST'])
 async def webhook():
+    """مدیریت درخواست‌های Webhook با پاسخ سریع"""
+    start_time = time.time()
     if WEBHOOK_SECRET and request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
         logger.warning("Attempt to access webhook with invalid secret token")
-        return 'Unauthorized', 401
+        return Response('Unauthorized', 401)
 
     try:
         json_data = request.get_json()
         if not json_data:
             logger.error("Empty webhook data received")
-            return 'Bad Request', 400
+            return Response('Bad Request', 400)
             
-        application = get_application()
-        update = Update.de_json(json_data, application.bot)
-        await application.process_update(update)
-        return '', 200
+        # قرار دادن به‌روزرسانی در صف
+        update_queue.put(json_data)
+        logger.info(f"Webhook update queued in {time.time() - start_time:.2f} seconds")
+        return Response('', 200)
     except Exception as e:
         logger.error(f"Error processing webhook: {e}", exc_info=True)
-        return 'Internal Server Error', 500
+        return Response('Internal Server Error', 500)
+
+async def process_update_queue():
+    """پردازش به‌روزرسانی‌های موجود در صف"""
+    application = get_application()
+    while True:
+        try:
+            json_data = update_queue.get_nowait()
+            start_time = time.time()
+            update = Update.de_json(json_data, application.bot)
+            await application.process_update(update)
+            logger.info(f"Processed update in {time.time() - start_time:.2f} seconds")
+            update_queue.task_done()
+        except Queue.Empty:
+            await asyncio.sleep(0.1)  # منتظر به‌روزرسانی جدید
+        except Exception as e:
+            logger.error(f"Error processing queued update: {e}", exc_info=True)
 
 # ==================== بهبودهای دیتابیس ====================
 
 @contextmanager
 def get_db_connection():
+    """مدیریت اتصال پایگاه داده با بهینه‌سازی"""
     conn = sqlite3.connect(
         '/opt/render/project/src/bot.db',
         check_same_thread=False,
@@ -259,16 +286,14 @@ def get_db_connection():
         conn.close()
 
 def init_db():
+    """مقداردهی اولیه پایگاه داده"""
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # ایجاد جدول users
             c.execute('''CREATE TABLE IF NOT EXISTS users
                         (user_id INTEGER PRIMARY KEY, 
                          joined TEXT, 
                          phone TEXT)''')
-            
-            # ایجاد جدول ads
             c.execute('''CREATE TABLE IF NOT EXISTS ads
                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
                          user_id INTEGER,
@@ -280,15 +305,9 @@ def init_db():
                          status TEXT DEFAULT 'pending',
                          is_referral INTEGER,
                          FOREIGN KEY (user_id) REFERENCES users(user_id))''')
-            
-            # ایجاد جدول admins
             c.execute('''CREATE TABLE IF NOT EXISTS admins
                         (user_id INTEGER PRIMARY KEY)''')
-            
-            # ایجاد ایندکس‌ها
             c.execute('CREATE INDEX IF NOT EXISTS idx_ads_user_status ON ads(user_id, status)')
-            
-            # افزودن ادمین اولیه
             initial_admin_id = 5677216420
             c.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (initial_admin_id,))
             conn.commit()
@@ -300,6 +319,7 @@ def init_db():
 # ==================== توابع ربات ====================
 
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بررسی عضویت کاربر در کانال"""
     user_id = update.effective_user.id
     max_retries = 3
     for attempt in range(max_retries):
@@ -322,8 +342,14 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return False
 
 async def check_membership_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مدیریت Callback بررسی عضویت"""
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except BadRequest as e:
+        logger.warning(f"Failed to answer callback query: {e}")
+        await query.message.reply_text("لطفاً دوباره تلاش کنید.")
+        return
     user_id = query.from_user.id
     try:
         member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
@@ -337,6 +363,7 @@ async def check_membership_callback(update: Update, context: ContextTypes.DEFAUL
         await query.answer("خطا در بررسی عضویت. لطفاً دوباره تلاش کنید.", show_alert=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """شروع ربات"""
     user = update.effective_user
     if await check_membership(update, context):
         buttons = [
@@ -371,9 +398,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.effective_message.reply_text("❌ خطایی در ثبت اطلاعات رخ داد.")
 
 async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """شروع فرآیند ثبت آگهی"""
     query = update.callback_query
     if query:
-        await query.answer()
+        try:
+            await query.answer()
+        except BadRequest as e:
+            logger.warning(f"Failed to answer callback query: {e}")
+            await query.message.reply_text("لطفاً دوباره تلاش کنید.")
+            return ConversationHandler.END
     message = update.effective_message
     if not await check_membership(update, context):
         await message.reply_text("⚠️ لطفاً ابتدا در کانال عضو شوید!")
@@ -383,9 +416,15 @@ async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return AD_TITLE
 
 async def post_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """شروع فرآیند ثبت حواله"""
     query = update.callback_query
     if query:
-        await query.answer()
+        try:
+            await query.answer()
+        except BadRequest as e:
+            logger.warning(f"Failed to answer callback query: {e}")
+            await query.message.reply_text("لطفاً دوباره تلاش کنید.")
+            return ConversationHandler.END
     message = update.effective_message
     if not await check_membership(update, context):
         await message.reply_text("⚠️ لطفاً ابتدا در کانال عضو شوید!")
@@ -395,6 +434,7 @@ async def post_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return AD_TITLE
 
 async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دریافت عنوان آگهی"""
     if not update.message.text:
         await update.effective_message.reply_text("لطفاً فقط متن وارد کنید.")
         return AD_TITLE
@@ -407,6 +447,7 @@ async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return AD_DESCRIPTION
 
 async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دریافت توضیحات آگهی"""
     if not update.message.text:
         await update.effective_message.reply_text("لطفاً فقط متن وارد کنید.")
         return AD_DESCRIPTION
@@ -419,6 +460,7 @@ async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_T
     return AD_PRICE
 
 async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دریافت قیمت آگهی"""
     price = update.message.text.strip().replace(",", "")
     try:
         price_int = int(price)
@@ -440,6 +482,7 @@ async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AD_PRICE
 
 async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دریافت عکس‌های آگهی"""
     ad = context.user_data['ad']
     if update.message.text and update.message.text.lower() == "هیچ":
         ad['photos'] = []
@@ -467,6 +510,7 @@ async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AD_PHOTOS
 
 async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """درخواست شماره تلفن"""
     user_id = update.effective_user.id
     try:
         with get_db_connection() as conn:
@@ -499,6 +543,7 @@ async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دریافت شماره تلفن"""
     user_id = update.effective_user.id
     phone = None
     if update.message.contact:
@@ -550,6 +595,7 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ذخیره آگهی در پایگاه داده"""
     ad = context.user_data['ad']
     user_id = update.effective_user.id
     try:
@@ -595,9 +641,15 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش پنل مدیریت"""
     query = update.callback_query
     if query:
-        await query.answer()
+        try:
+            await query.answer()
+        except BadRequest as e:
+            logger.warning(f"Failed to answer callback query: {e}")
+            await query.message.reply_text("لطفاً دوباره تلاش کنید.")
+            return
         message = query.message
     else:
         message = update.effective_message
@@ -711,8 +763,14 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مدیریت اقدامات ادمین (تأیید/رد آگهی)"""
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except BadRequest as e:
+        logger.warning(f"Failed to answer callback query: {e}")
+        await query.message.reply_text("لطفاً دوباره تلاش کنید.")
+        return
     if update.effective_user.id not in ADMIN_ID:
         await query.message.reply_text("❌ دسترسی غیرمجاز!")
         return
@@ -836,8 +894,14 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.message.reply_text("❌ خطایی در پردازش درخواست رخ داد.")
 
 async def change_status_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تغییر فیلتر وضعیت در پنل ادمین"""
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except BadRequest as e:
+        logger.warning(f"Failed to answer callback query: {e}")
+        await query.message.reply_text("لطفاً دوباره تلاش کنید.")
+        return
     if update.effective_user.id not in ADMIN_ID:
         await query.message.reply_text("❌ دسترسی غیرمجاز!")
         return
@@ -861,8 +925,14 @@ async def change_status_filter(update: Update, context: ContextTypes.DEFAULT_TYP
         await admin_panel(update, context)
 
 async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مدیریت Callbackهای ادمین"""
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except BadRequest as e:
+        logger.warning(f"Failed to answer callback query: {e}")
+        await query.message.reply_text("لطفاً دوباره تلاش کنید.")
+        return
     if update.effective_user.id not in ADMIN_ID:
         await query.message.reply_text("❌ دسترسی غیرمجاز!")
         return
@@ -903,9 +973,15 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await admin_panel(update, context)
 
 async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش آگهی‌های تأییدشده"""
     query = update.callback_query
     if query:
-        await query.answer()
+        try:
+            await query.answer()
+        except BadRequest as e:
+            logger.warning(f"Failed to answer callback query: {e}")
+            await query.message.reply_text("لطفاً دوباره تلاش کنید.")
+            return
         message = query.message
     else:
         message = update.effective_message
@@ -974,9 +1050,15 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش آمار ربات"""
     query = update.callback_query
     if query:
-        await query.answer()
+        try:
+            await query.answer()
+        except BadRequest as e:
+            logger.warning(f"Failed to answer callback query: {e}")
+            await query.message.reply_text("لطفاً دوباره تلاش کنید.")
+            return
         message = query.message
     else:
         message = update.effective_message
@@ -1026,6 +1108,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """افزودن ادمین جدید"""
     if update.effective_user.id not in ADMIN_ID:
         await update.effective_message.reply_text("❌ دسترسی غیرمجاز!")
         return
@@ -1061,6 +1144,7 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("❌ خطایی در افزودن مدیر رخ داد.")
 
 async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """حذف ادمین"""
     if update.effective_user.id not in ADMIN_ID:
         await update.effective_message.reply_text("❌ دسترسی غیرمجاز!")
         return
@@ -1101,6 +1185,7 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("❌ خطایی در حذف مدیر رخ داد.")
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """لغو عملیات"""
     context.user_data.clear()
     await update.effective_message.reply_text(
         "❌ عملیات فعلی لغو شد.",
@@ -1109,6 +1194,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """مدیریت خطاها"""
     logger.error(f"خطا در پردازش به‌روزرسانی {update}: {context.error}", exc_info=context.error)
     if update and update.effective_message:
         try:
@@ -1119,8 +1205,14 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
             pass
 
 async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش عکس‌های آگهی"""
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except BadRequest as e:
+        logger.warning(f"Failed to answer callback query: {e}")
+        await query.message.reply_text("لطفاً دوباره تلاش کنید.")
+        return
     if not query.data.startswith("show_photos_"):
         logger.error(f"Invalid callback data: {query.data}")
         await query.message.reply_text("❌ خطای ناشناخته در پردازش درخواست.")
@@ -1157,3 +1249,15 @@ async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # مقداردهی اولیه دیتابیس و ادمین‌ها
 init_db()
 update_admin_ids()
+
+# شروع پردازش صف به‌روزرسانی‌ها
+async def main():
+    """شروع ربات و پردازش صف"""
+    application = get_application()
+    # شروع تسک پردازش صف
+    asyncio.create_task(process_update_queue())
+    # اجرای اپلیکیشن Flask
+    flask_app.run(host='0.0.0.0', port=PORT)
+
+if __name__ == "__main__":
+    asyncio.run(main())
