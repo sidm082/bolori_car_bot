@@ -1030,7 +1030,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"خطا در پردازش به‌روزرسانی {update}: {context.error}", exc_info=context.error)
-    if update and update.effect ??
+    if update and update.effective_message:
         try:
             await update.effective_message.reply_text(
                 "⚠️ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید."
