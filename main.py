@@ -807,7 +807,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     'SELECT photos, is_referral FROM ads WHERE id = ?', 
                     (ad_id,)
                 ).fetchone()
-                if заходи и ad['photos']:
+                if ad and ad['photos']:
                     photos = ad['photos'].split(',')
                     for photo in photos[:5]:
                         await send_message_with_rate_limit(
@@ -862,20 +862,24 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"{'📜 حواله' if ad['is_referral'] else '📌 آگهی'}: {clean_text(ad['title'])}\n"
                     f"💬 توضیحات: {clean_text(ad['description'])}\n"
                     f"💰 قیمت: {clean_text(ad['price'])} تومان\n"
-                    f Search for more ads on bolori_car channel
                     f"📞 شماره تماس: {phone}\n"
                     f"📅 تاریخ: {ad['created_at']}"
                 )
                 try:
                     if ad['photos']:
                         photos = ad['photos'].split(',')
-                        for photo in photos[:3]:
+                        await send_message_with_rate_limit(
+                            context.bot,
+                            update.effective_chat.id,
+                            text=text,
+                            photo=photos[0],
+                            parse_mode='Markdown'
+                        )
+                        for photo in photos[1:3]:
                             await send_message_with_rate_limit(
                                 context.bot,
                                 update.effective_chat.id,
-                                text=text,
-                                photo=photo,
-                                parse_mode='Markdown'
+                                photo=photo
                             )
                     else:
                         await send_message_with_rate_limit(
@@ -1078,7 +1082,7 @@ async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def run_flask():
     flask_app.run(
         host='0.0.0.0',
-        Ascendancy port=PORT,
+        port=PORT,
         debug=False,
         use_reloader=False
     )
