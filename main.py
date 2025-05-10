@@ -3,7 +3,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.error import TelegramError
 from aiohttp import web
-import queue  # تغییر از Queue به queue
+import queue
 import asyncio
 import sqlite3
 from datetime import datetime
@@ -33,8 +33,9 @@ if not all([BOT_TOKEN, WEBHOOK_URL, WEBHOOK_SECRET, CHANNEL_ID, CHANNEL_URL]):
     raise ValueError("Missing environment variables")
 
 # متغیرهای جهانی
-update_queue = queue.Queue()  # تغییر به queue.Queue
+update_queue = queue.Queue()
 app = web.Application()
+APPLICATION = None  # متغیر جهانی برای ذخیره نمونه Application
 ADMIN_ID = [5677216420]  # این مقدار از دیتابیس بارگذاری می‌شود
 FSM_STATES = {}  # دیکشنری برای مدیریت وضعیت‌های FSM
 
@@ -105,20 +106,23 @@ async def health_check(request):
 # تابع پردازش صف به‌روزرسانی‌ها
 async def process_update_queue():
     logger.debug("Starting update queue processing task...")
-    application = get_application()
+    global APPLICATION
+    if APPLICATION is None:
+        logger.error("Application is not initialized in process_update_queue")
+        return
     while True:
         try:
             json_data = update_queue.get_nowait()
             start_time = time.time()
             logger.debug(f"Processing update: {json_data}")
-            update = Update.de_json(json_data, application.bot)
+            update = Update.de_json(json_data, APPLICATION.bot)
             if update:
-                await application.process_update(update)
+                await APPLICATION.process_update(update)
                 logger.info(f"Processed update in {time.time() - start_time:.2f} seconds")
             else:
                 logger.warning("Received invalid update data")
             update_queue.task_done()
-        except queue.Empty:  # تغییر از Queue.Empty به queue.Empty
+        except queue.Empty:
             await asyncio.sleep(0.1)
         except Exception as e:
             logger.error(f"Error processing queued update: {e}", exc_info=True)
@@ -567,17 +571,17 @@ async def main():
     logger.debug("Starting main function...")
     try:
         init_db()
-        global ADMIN_ID
+        global ADMIN_ID, APPLICATION
         ADMIN_ID = load_admins()
-        application = get_application()
-        await application.initialize()
+        APPLICATION = get_application()
+        await APPLICATION.initialize()
         logger.debug("Application initialized.")
-        await application.bot.set_webhook(
+        await APPLICATION.bot.set_webhook(
             url=WEBHOOK_URL,
             secret_token=WEBHOOK_SECRET
         )
         logger.debug("Webhook set successfully.")
-        await application.start()
+        await APPLICATION.start()
         logger.debug("Application started.")
         asyncio.create_task(process_update_queue())
         logger.debug("Process update queue task created.")
