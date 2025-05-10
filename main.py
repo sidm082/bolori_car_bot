@@ -2,13 +2,14 @@ import logging
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.error import TelegramError
-from flask import Flask, request, Response
+from aiohttp import web
 from queue import Queue
 import asyncio
 import sqlite3
 from datetime import datetime
 import time
 import os
+import json
 
 # تنظیم لاگ‌گیری با سطح DEBUG
 logging.basicConfig(
@@ -33,7 +34,7 @@ if not all([BOT_TOKEN, WEBHOOK_URL, WEBHOOK_SECRET, CHANNEL_ID, CHANNEL_URL]):
 
 # متغیرهای جهانی
 update_queue = Queue()
-flask_app = Flask(__name__)
+app = web.Application()
 ADMIN_ID = [5677216420]  # این مقدار از دیتابیس بارگذاری می‌شود
 FSM_STATES = {}  # دیکشنری برای مدیریت وضعیت‌های FSM
 
@@ -76,25 +77,28 @@ def load_admins():
         return admin_ids
 
 # مسیر Webhook
-@flask_app.route('/webhook', methods=['POST'])
-def webhook():
+async def webhook(request):
     logger.debug("Received webhook request")
     start_time = time.time()
     if WEBHOOK_SECRET and request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
         logger.warning("Invalid webhook secret token")
-        return Response('Unauthorized', 401)
+        return web.Response(status=401, text='Unauthorized')
     try:
-        json_data = request.get_json()
+        json_data = await request.json()
         if not json_data:
             logger.error("Empty webhook data received")
-            return Response('Bad Request', 400)
+            return web.Response(status=400, text='Bad Request')
         update_queue.put(json_data)
         logger.debug(f"Queue size after putting update: {update_queue.qsize()}")
         logger.info(f"Webhook update queued in {time.time() - start_time:.2f} seconds")
-        return Response('', 200)
+        return web.Response(status=200)
     except Exception as e:
         logger.error(f"Error processing webhook: {e}", exc_info=True)
-        return Response('Internal Server Error', 500)
+        return web.Response(status=500, text='Internal Server Error')
+
+# مسیر سلامت
+async def health_check(request):
+    return web.Response(status=200, text='OK')
 
 # تابع پردازش صف به‌روزرسانی‌ها
 async def process_update_queue():
@@ -273,7 +277,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
             FSM_STATES[user_id]["image_id"] = update.message.photo[-1].file_id
             await save_ad(update, context)
         else:
-            await update.message.reply_text("لطفاً یک تصویر ارسال کنید یا /skip را بزنید:")
+            await update exposé_message.reply_text("لطفاً یک تصویر ارسال کنید یا /skip را بزنید:")
 
 async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -575,7 +579,6 @@ async def main():
         logger.debug("Application started.")
         asyncio.create_task(process_update_queue())
         logger.debug("Process update queue task created.")
-        await asyncio.Future()  # جلوگیری از توقف حلقه
     except Exception as e:
         logger.error(f"Error in main: {e}", exc_info=True)
         raise
@@ -584,7 +587,9 @@ async def main():
 if __name__ == '__main__':
     init_db()
     ADMIN_ID = load_admins()
-    # اجرای Flask و asyncio در یک حلقه
-    loop = asyncio.get_event_loop()
-    loop.create_task(main())
-    flask_app.run(host="0.0.0.0", port=PORT)
+    # ثبت مسیرهای aiohttp
+    app.router.add_post('/webhook', webhook)
+    app.router.add_get('/', health_check)
+    # اجرای سرور aiohttp و تابع اصلی
+    asyncio.run(main())
+    web.run_app(app, host="0.0.0.0", port=PORT)
