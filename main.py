@@ -1228,9 +1228,6 @@ if __name__ == "__main__":
     try:
         # برای تست محلی، می‌توانید این خط را فعال کنید
         # asyncio.run(main())
-
-        # برای اجرا در Render با Gunicorn، نیازی به asyncio.run نیست
-        # Flask اپلیکیشن به‌طور خودکار توسط Gunicorn مدیریت می‌شود
-        pass
+        pass  # برای Render، نیازی به اجرای مستقیم نیست
     except Exception as e:
         logger.error(f"Error running main: {e}", exc_info=True)
