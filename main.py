@@ -21,10 +21,9 @@ from contextlib import contextmanager
 from queue import Queue
 import time
 
-# تنظیمات لاگ‌گیری
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.DEBUG  # تغییر از INFO به DEBUG
 )
 logger = logging.getLogger(__name__)
 logging.getLogger('telegram').setLevel(logging.DEBUG)
