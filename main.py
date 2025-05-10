@@ -292,26 +292,6 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return False
 
-async def check_membership_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        await query.answer()
-    except BadRequest as e:
-        logger.warning(f"Failed to answer callback query: {e}")
-        await query.message.reply_text("لطفاً دوباره تلاش کنید.")
-        return
-    user_id = query.from_user.id
-    try:
-        member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        if member.status in ['member', 'administrator', 'creator']:
-            await query.edit_message_text("✅ عضویت شما تأیید شد! حالا می‌توانید ادامه دهید.")
-            await start(update, context)
-        else:
-            await query.answer("شما هنوز عضو کانال نشده‌اید!", show_alert=True)
-    except Exception as e:
-        logger.error(f"بررسی عضویت در callback برای کاربر {user_id} ناموفق بود: {e}")
-        await query.answer("خطا در بررسی عضویت. لطفاً دوباره تلاش کنید.", show_alert=True)
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"Start command received from user {update.effective_user.id}")
     user = update.effective_user
