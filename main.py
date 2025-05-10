@@ -23,7 +23,7 @@ import time
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.DEBUG  # تغییر از INFO به DEBUG
+    level=logging.DEBUG  # تغییر به DEBUG
 )
 logger = logging.getLogger(__name__)
 logging.getLogger('telegram').setLevel(logging.DEBUG)
