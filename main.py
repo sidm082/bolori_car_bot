@@ -1,5 +1,5 @@
 import os
-import sqlite3
+import sqlite argumento
 import logging
 import asyncio
 import re
@@ -17,13 +17,9 @@ from telegram.ext import (
 from telegram.error import TelegramError, RetryAfter, BadRequest
 from dotenv import load_dotenv
 from flask import Flask, request, Response
-import nest_asyncio
 from contextlib import contextmanager
 from queue import Queue
 import time
-
-# اعمال nest_asyncio
-nest_asyncio.apply()
 
 # تنظیمات لاگ‌گیری
 logging.basicConfig(
@@ -43,6 +39,10 @@ PORT = int(os.getenv('PORT', 8080))
 if not TOKEN:
     logger.error("BOT_TOKEN not found in .env file")
     raise ValueError("لطفاً توکن ربات را در فایل .env تنظیم کنید.")
+
+if not WEBHOOK_URL:
+    logger.error("WEBHOOK_URL not found in .env file")
+    raise ValueError("لطفاً URL وب‌هوک را در فایل .env تنظیم کنید.")
 
 # تنظیمات کانال
 CHANNEL_URL = "https://t.me/bolori_car"
@@ -118,7 +118,6 @@ def get_application():
     global _application
     if _application is None:
         logger.info("Initializing Telegram application...")
-        loop = asyncio.get_event_loop()
         try:
             _application = Application.builder().token(TOKEN).build()
             logger.info("Telegram application built.")
@@ -165,20 +164,6 @@ def get_application():
             _application.add_handler(CallbackQueryHandler(show_ad_photos, pattern="^show_photos_"))
             _application.add_error_handler(error_handler)
             logger.info("Handlers registered.")
-            loop.run_until_complete(_application.initialize())
-            logger.info("Application initialized.")
-            loop.run_until_complete(_application.start())
-            logger.info("Application started.")
-            if WEBHOOK_URL:
-                try:
-                    loop.run_until_complete(_application.bot.set_webhook(
-                        url=WEBHOOK_URL,
-                        secret_token=WEBHOOK_SECRET
-                    ))
-                    logger.info("Webhook set successfully.")
-                except TelegramError as e:
-                    logger.error(f"Failed to set webhook: {e}")
-                    raise
         except Exception as e:
             logger.error(f"Error initializing application: {e}", exc_info=True)
             raise
@@ -1019,7 +1004,9 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         message = update.effective_message
     if update.effective_user.id not in ADMIN_ID:
-        await message.reply_text("❌ دسترسی غیرمجاز!")
+        await message.reply
+
+_text("❌ دسترسی غیرمجاز!")
         return
     try:
         with get_db_connection() as conn:
@@ -1201,20 +1188,51 @@ async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 init_db()
 update_admin_ids()
 
+# ==================== تابع اصلی Webhook ====================
+
 async def main():
     logger.info("Starting main function...")
     try:
         application = get_application()
+        await application.initialize()
         logger.info("Application initialized.")
-        logger.info("Starting polling...")
-        await application.start_polling()
+
+        # تنظیم وب‌هوک
+        await application.bot.set_webhook(
+            url=WEBHOOK_URL,
+            secret_token=WEBHOOK_SECRET
+        )
+        logger.info("Webhook set successfully.")
+
+        # شروع اپلیکیشن
+        await application.start()
+        logger.info("Application started.")
+
+        # شروع پردازش صف به‌روزرسانی‌ها
+        asyncio.create_task(process_update_queue())
+
+        # اجرای وب‌هوک
+        await application.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path="/webhook",
+            webhook_url=WEBHOOK_URL,
+            secret_token=WEBHOOK_SECRET
+        )
     except Exception as e:
         logger.error(f"Error in main: {e}", exc_info=True)
         raise
 
+# ==================== اجرای برنامه ====================
+
 if __name__ == "__main__":
     logger.info("Running main...")
     try:
-        asyncio.run(main())
+        # برای تست محلی، می‌توانید این خط را فعال کنید
+        # asyncio.run(main())
+
+        # برای اجرا در Render با Gunicorn، نیازی به asyncio.run نیست
+        # Flask اپلیکیشن به‌طور خودکار توسط Gunicorn مدیریت می‌شود
+        pass
     except Exception as e:
         logger.error(f"Error running main: {e}", exc_info=True)
