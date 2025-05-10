@@ -169,9 +169,9 @@ def get_application():
     return _application
 
 # ==================== بهبودهای Webhook ====================
-
 @flask_app.route('/webhook', methods=['POST'])
 def webhook():
+    logger.debug("Received webhook request")
     start_time = time.time()
     if WEBHOOK_SECRET and request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
         logger.warning("Invalid webhook secret token")
@@ -182,19 +182,22 @@ def webhook():
             logger.error("Empty webhook data received")
             return Response('Bad Request', 400)
         update_queue.put(json_data)
+        logger.debug(f"Queue size after putting update: {update_queue.qsize()}")
         logger.info(f"Webhook update queued in {time.time() - start_time:.2f} seconds")
         return Response('', 200)
     except Exception as e:
         logger.error(f"Error processing webhook: {e}", exc_info=True)
         return Response('Internal Server Error', 500)
 
+
 async def process_update_queue():
-    logger.info("Starting update queue processing...")
+    logger.debug("Starting update queue processing task...")
     application = get_application()
     while True:
         try:
             json_data = update_queue.get_nowait()
             start_time = time.time()
+            logger.debug(f"Processing update: {json_data}")
             update = Update.de_json(json_data, application.bot)
             if update:
                 await application.process_update(update)
