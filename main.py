@@ -267,10 +267,12 @@ def init_db():
 
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    logger.debug(f"Checking membership for user {user_id} in channel {CHANNEL_ID}")
     max_retries = 3
     for attempt in range(max_retries):
         try:
             member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+            logger.debug(f"Membership status for user {user_id}: {member.status}")
             return member.status in ['member', 'administrator', 'creator']
         except TelegramError as e:
             logger.error(f"Attempt {attempt + 1} failed for user {user_id}: {e}")
@@ -308,9 +310,10 @@ async def check_membership_callback(update: Update, context: ContextTypes.DEFAUL
         await query.answer("خطا در بررسی عضویت. لطفاً دوباره تلاش کنید.", show_alert=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"Start command received from user {update.effective_user.id}")
+    logger.debug(f"Start command received from user {update.effective_user.id}")
     user = update.effective_user
     if await check_membership(update, context):
+        logger.debug(f"User {user.id} is a member, showing welcome message")
         buttons = [
             [InlineKeyboardButton("➕ ثبت آگهی", callback_data="post_ad")],
             [InlineKeyboardButton("📜 ثبت حواله", callback_data="post_referral")],
@@ -338,10 +341,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     (user.id, datetime.now().isoformat())
                 )
                 conn.commit()
-                logger.info(f"User {user.id} registered in database")
+                logger.debug(f"User {user.id} registered in database")
         except sqlite3.Error as e:
             logger.error(f"Database error in start: {e}")
             await update.effective_message.reply_text("❌ خطایی در ثبت اطلاعات رخ داد.")
+    else:
+        logger.debug(f"User {user.id} is not a member, prompting to join channel")
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ عضویت در کانال", url=CHANNEL_URL)],
+            [InlineKeyboardButton("🔄 بررسی عضویت", callback_data="check_membership")]
+        ])
+        await update.effective_message.reply_text(
+            "⚠️ برای استفاده از ربات، لطفاً ابتدا در کانال ما عضو شوید:",
+            reply_markup=keyboard
+        )
 
 async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
