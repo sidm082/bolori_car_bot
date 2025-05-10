@@ -1103,6 +1103,14 @@ async def run_bot():
         except TelegramError as e:
             logger.error(f"خطا در تنظیم وب‌هوک: {e}")
             raise
+    
+    # حلقه انتظار برای نگه داشتن ربات در حالت فعال
+    try:
+        while True:
+            await asyncio.sleep(3600)  # هر ساعت بررسی می‌کنه
+    except asyncio.CancelledError:
+        logger.info("حلقه انتظار ربات متوقف شد.")
+        raise
 
 async def main():
     logger.info("🔄 راه‌اندازی ربات...")
@@ -1163,10 +1171,9 @@ async def main():
         await run_bot()
     except Exception as e:
         logger.critical(f"خطا در اجرای ربات: {e}", exc_info=True)
-        raise
-    finally:
         await application.stop()
         await application.shutdown()
+        raise
 
 if __name__ == "__main__":
     try:
