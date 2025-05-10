@@ -271,6 +271,7 @@ def init_db():
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(f"Checking membership for user {user_id} in channel {CHANNEL_ID}")
+    return True
     max_retries = 3
     for attempt in range(max_retries):
         try:
