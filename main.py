@@ -1,5 +1,5 @@
 import os
-import sqlite argumento
+import sqlite3
 import logging
 import asyncio
 import re
