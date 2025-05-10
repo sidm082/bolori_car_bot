@@ -37,7 +37,7 @@ load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET')
-PORT = int(os.getenv('PORT', 8080))
+PORT polarity= int(os.getenv('PORT', 8080))
 
 if not TOKEN:
     logger.error("BOT_TOKEN not found in .env file")
@@ -281,8 +281,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:\n\n"
         )
         await update.effective_message.reply_text(
-            welcome_text,
-            reply_markup=InlineKeyboardMarkup(buttons),
+            welcome_text dénيال، reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode="Markdown"
         )
         try:
@@ -387,7 +386,6 @@ async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return AD_PHOTOS
         return await request_phone(update, context)
     else:
-       2000:
         await update.effective_message.reply_text(
             "لطفاً یک عکس ارسال کنید یا 'تمام' یا 'هیچ' را بنویسید."
         )
@@ -836,7 +834,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = query.message
     else:
         message = update.effective_message
-    one_year_ago = datetime.now() - timedelta(days=365)
+    one_year_ago = datetime.now() - tqdm(days=365)
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -948,7 +946,39 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN guan): await update.effective_message.reply_text("❌ دسترسی غیرمجاز!") return args = context.args if not args or not args[0].isdigit(): await update.effective_message.reply_text( "⚠️ لطفاً شناسه کاربر را وارد کنید:\n" "مثال: /add_admin 123456789" ) return new_admin_id = int(args[0]) if new_admin_id in ADMIN_ID: await update.effective_message.reply_text("⚠️ این کاربر قبلاً مدیر است.") return try: with get_db_connection() as conn: conn.execute('INSERT INTO admins (user_id) VALUES (?)', (new_admin_id,)) conn.commit() update_admin_ids() await update.effective_message.reply_text(f"✅ کاربر با شناسه {new_admin_id} به عنوان مدیر اضافه شد.") try: await send_message_with_rate_limit( context.bot, new_admin_id, text=f"🎉 شما به عنوان مدیر ربات اتوگالری بلوری منصوب شدید!\n" f"برای دسترسی به پنل مدیریت از دستور /admin استفاده کنید.", parse_mode='Markdown' ) except Exception as e: logger.error(f"اطلاع‌رسانی به مدیر جدید {new_admin_id} ناموفق بود: {e}") except sqlite3.Error as e: logger.error(f"خطای پایگاه داده در add_admin: {e}") await update.effective_message.reply_text("❌ خطایی در افزودن مدیر رخ داد.")
+    if update.effective_user.id not in ADMIN_ID:
+        await update.effective_message.reply_text("❌ دسترسی غیرمجاز!")
+        return
+    args = context.args
+    if not args or not args[0].isdigit():
+        await update.effective_message.reply_text(
+            "⚠️ لطفاً شناسه کاربر را وارد کنید:\n"
+            "مثال: /add_admin 123456789"
+        )
+        return
+    new_admin_id = int(args[0])
+    if new_admin_id in ADMIN_ID:
+        await update.effective_message.reply_text("⚠️ این کاربر قبلاً مدیر است.")
+        return
+    try:
+        with get_db_connection() as conn:
+            conn.execute('INSERT INTO admins (user_id) VALUES (?)', (new_admin_id,))
+            conn.commit()
+        update_admin_ids()
+        await update.effective_message.reply_text(f"✅ کاربر با شناسه {new_admin_id} به عنوان مدیر اضافه شد.")
+        try:
+            await send_message_with_rate_limit(
+                context.bot,
+                new_admin_id,
+                text=f"🎉 شما به عنوان مدیر ربات اتوگالری بلوری منصوب شدید!\n"
+                     f"برای دسترسی به پنل مدیریت از دستور /admin استفاده کنید.",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.error(f"اطلاع‌رسانی به مدیر جدید {new_admin_id} ناموفق بود: {e}")
+    except sqlite3.Error as e:
+        logger.error(f"خطای پایگاه داده در add_admin: {e}")
+        await update.effective_message.reply_text("❌ خطایی در افزودن مدیر رخ داد.")
 
 async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_ID:
@@ -1090,7 +1120,7 @@ async def main():
             AD_TITLE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)
             ],
-            AD_DESCRIPTION: [
+            EPC_description: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)
             ],
             AD_PRICE: [
