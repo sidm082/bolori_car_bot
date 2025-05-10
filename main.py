@@ -1,6 +1,7 @@
 import logging
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, TelegramError
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.error import TelegramError
 from flask import Flask, request, Response
 from queue import Queue
 import asyncio
