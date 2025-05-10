@@ -277,7 +277,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
             FSM_STATES[user_id]["image_id"] = update.message.photo[-1].file_id
             await save_ad(update, context)
         else:
-            await update exposé_message.reply_text("لطفاً یک تصویر ارسال کنید یا /skip را بزنید:")
+            await update.effective_message.reply_text("لطفاً یک تصویر ارسال کنید یا /skip را بزنید:")
 
 async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -590,6 +590,5 @@ if __name__ == '__main__':
     # ثبت مسیرهای aiohttp
     app.router.add_post('/webhook', webhook)
     app.router.add_get('/', health_check)
-    # اجرای سرور aiohttp و تابع اصلی
-    asyncio.run(main())
+    # اجرای سرور aiohttp
     web.run_app(app, host="0.0.0.0", port=PORT)
