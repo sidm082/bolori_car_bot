@@ -60,6 +60,8 @@ def init_db():
         conn.execute('''CREATE TABLE IF NOT EXISTS admins
                       (user_id INTEGER PRIMARY KEY)''')
         logger.debug("Admins table created.")
+        # افزودن ادمین پیش‌فرض اگر وجود نداشته باشد
+        conn.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (5677216420,))
         conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_status
                       ON ads (status)''')
         logger.debug("Index created.")
@@ -583,12 +585,30 @@ async def main():
         logger.error(f"Error in main: {e}", exc_info=True)
         raise
 
-# اجرای برنامه
-if __name__ == '__main__':
+# تابع راه‌اندازی سرور و ربات
+async def run():
     init_db()
+    global ADMIN_ID
     ADMIN_ID = load_admins()
     # ثبت مسیرهای aiohttp
     app.router.add_post('/webhook', webhook)
     app.router.add_get('/', health_check)
+    # اجرای تابع main
+    await main()
     # اجرای سرور aiohttp
-    web.run_app(app, host="0.0.0.0", port=PORT)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
+    logger.info(f"Server started on port {PORT}")
+
+# اجرای برنامه
+if __name__ == '__main__':
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(run())
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        loop.close()
