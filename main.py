@@ -3,7 +3,6 @@ import sqlite3
 import logging
 import asyncio
 import re
-import random
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
@@ -23,7 +22,7 @@ from contextlib import contextmanager
 from queue import Queue
 import time
 
-# اعمال nest_asyncio برای اجازه دادن به حلقه‌های تو در تو
+# اعمال nest_asyncio
 nest_asyncio.apply()
 
 # تنظیمات لاگ‌گیری
@@ -69,13 +68,11 @@ ADMIN_ID = []
 # ==================== توابع کمکی ====================
 
 def clean_text(text):
-    """پاک‌سازی متن برای جلوگیری از مشکلات Markdown یا تزریق."""
     if not text:
         return "نامشخص"
     return re.sub(r'[\*_`\[\\]', '', str(text))
 
 async def send_message_with_rate_limit(bot, chat_id, text=None, photo=None, reply_markup=None, parse_mode=None):
-    """ارسال پیام با مدیریت محدودیت‌های نرخ تلگرام."""
     try:
         if photo:
             await bot.send_photo(
@@ -100,7 +97,6 @@ async def send_message_with_rate_limit(bot, chat_id, text=None, photo=None, repl
         logger.error(f"Error sending message to {chat_id}: {e}")
 
 def load_admin_ids():
-    """بارگذاری لیست ادمین‌ها از دیتابیس."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -112,7 +108,6 @@ def load_admin_ids():
         return [5677216420]
 
 def update_admin_ids():
-    """به‌روزرسانی لیست ADMIN_ID."""
     global ADMIN_ID
     ADMIN_ID = load_admin_ids()
     logger.info(f"Updated ADMIN_ID: {ADMIN_ID}")
@@ -120,111 +115,79 @@ def update_admin_ids():
 # ==================== توابع دسترسی به اپلیکیشن تلگرام ====================
 
 def get_application():
-    """دریافت یا مقداردهی اپلیکیشن تلگرام"""
     global _application
     if _application is None:
         logger.info("Initializing Telegram application...")
         loop = asyncio.get_event_loop()
-        _application = Application.builder().token(TOKEN).build()
-        logger.info("Telegram application built.")
-        # ثبت handlerها
-        _application.add_handler(CommandHandler("start", start))
-        _application.add_handler(ConversationHandler(
-            entry_points=[
-                CallbackQueryHandler(post_ad, pattern="^post_ad$"),
-                CallbackQueryHandler(post_referral, pattern="^post_referral$"),
-                CommandHandler("post_ad", post_ad)
-            ],
-            states={
-                AD_TITLE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)
+        try:
+            _application = Application.builder().token(TOKEN).build()
+            logger.info("Telegram application built.")
+            _application.add_handler(CommandHandler("start", start))
+            _application.add_handler(ConversationHandler(
+                entry_points=[
+                    CallbackQueryHandler(post_ad, pattern="^post_ad$"),
+                    CallbackQueryHandler(post_referral, pattern="^post_referral$"),
+                    CommandHandler("post_ad", post_ad)
                 ],
-                AD_DESCRIPTION: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)
+                states={
+                    AD_TITLE: [
+                        MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)
+                    ],
+                    AD_DESCRIPTION: [
+                        MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)
+                    ],
+                    AD_PRICE: [
+                        MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)
+                    ],
+                    AD_PHOTOS: [
+                        MessageHandler(filters.PHOTO, receive_ad_photos),
+                        MessageHandler(filters.Regex('^(تمام|هیچ)$'), receive_ad_photos)
+                    ],
+                    AD_PHONE: [
+                        MessageHandler(filters.CONTACT, receive_phone),
+                        MessageHandler(filters.Regex(r'^(\+98|0)?9\d{9}$'), receive_phone)
+                    ],
+                },
+                fallbacks=[
+                    CommandHandler("cancel", cancel),
+                    MessageHandler(filters.COMMAND, cancel)
                 ],
-                AD_PRICE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_price)
-                ],
-                AD_PHOTOS: [
-                    MessageHandler(filters.PHOTO, receive_ad_photos),
-                    MessageHandler(filters.Regex('^(تمام|هیچ)$'), receive_ad_photos)
-                ],
-                AD_PHONE: [
-                    MessageHandler(filters.CONTACT, receive_phone),
-                    MessageHandler(filters.Regex(r'^(\+98|0)?9\d{9}$'), receive_phone)
-                ],
-            },
-            fallbacks=[
-                CommandHandler("cancel", cancel),
-                MessageHandler(filters.COMMAND, cancel)
-            ],
-            per_message=True
-        ))
-        _application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
-        _application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
-        _application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve_|reject_|page_|change_status|status_|show_photos_|admin_exit)"))
-        _application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
-        _application.add_handler(CommandHandler("admin", admin_panel))
-        _application.add_handler(CommandHandler("add_admin", add_admin))
-        _application.add_handler(CommandHandler("remove_admin", remove_admin))
-        _application.add_handler(CommandHandler("stats", stats))
-        _application.add_handler(CallbackQueryHandler(show_ad_photos, pattern="^show_photos_"))
-        _application.add_error_handler(error_handler)
-        logger.info("Handlers registered.")
-        loop.run_until_complete(_application.initialize())
-        logger.info("Application initialized.")
-        loop.run_until_complete(_application.start())
-        logger.info("Application started.")
-        if WEBHOOK_URL:
-            try:
-                loop.run_until_complete(_application.bot.set_webhook(
-                    url=WEBHOOK_URL,
-                    secret_token=WEBHOOK_SECRET
-                ))
-                logger.info("Webhook set successfully.")
-            except TelegramError as e:
-                logger.error(f"Failed to set webhook: {e}")
-                raise
+                per_message=True
+            ))
+            _application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
+            _application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
+            _application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(approve_|reject_|page_|change_status|status_|show_photos_|admin_exit)"))
+            _application.add_handler(CallbackQueryHandler(show_ads, pattern="^show_ads$"))
+            _application.add_handler(CommandHandler("admin", admin_panel))
+            _application.add_handler(CommandHandler("add_admin", add_admin))
+            _application.add_handler(CommandHandler("remove_admin", remove_admin))
+            _application.add_handler(CommandHandler("stats", stats))
+            _application.add_handler(CallbackQueryHandler(show_ad_photos, pattern="^show_photos_"))
+            _application.add_error_handler(error_handler)
+            logger.info("Handlers registered.")
+            loop.run_until_complete(_application.initialize())
+            logger.info("Application initialized.")
+            loop.run_until_complete(_application.start())
+            logger.info("Application started.")
+            if WEBHOOK_URL:
+                try:
+                    loop.run_until_complete(_application.bot.set_webhook(
+                        url=WEBHOOK_URL,
+                        secret_token=WEBHOOK_SECRET
+                    ))
+                    logger.info("Webhook set successfully.")
+                except TelegramError as e:
+                    logger.error(f"Failed to set webhook: {e}")
+                    raise
+        except Exception as e:
+            logger.error(f"Error initializing application: {e}", exc_info=True)
+            raise
     return _application
-
-# ==================== بهبودهای جدید برای UptimeRobot ====================
-
-@flask_app.route('/ping')
-def ping():
-    """Endpoint ساده برای بررسی وضعیت ربات"""
-    return 'pong', 200
-
-@flask_app.route('/health')
-def health_check():
-    """Endpoint جامع برای بررسی سلامت سرویس"""
-    try:
-        with get_db_connection() as conn:
-            conn.execute('SELECT 1')
-        app = get_application()
-        if not app.running:
-            raise RuntimeError("Telegram bot is not running")
-        return {
-            'status': 'healthy',
-            'timestamp': datetime.now().isoformat(),
-            'services': {
-                'database': 'ok',
-                'telegram_bot': 'ok',
-                'webhook': 'active' if WEBHOOK_URL else 'inactive'
-            }
-        }, 200
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return {
-            'status': 'unhealthy',
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }, 500
 
 # ==================== بهبودهای Webhook ====================
 
 @flask_app.route('/webhook', methods=['POST'])
 def webhook():
-    """مدیریت درخواست‌های Webhook با پاسخ سریع"""
     start_time = time.time()
     if WEBHOOK_SECRET and request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
         logger.warning("Invalid webhook secret token")
@@ -242,7 +205,6 @@ def webhook():
         return Response('Internal Server Error', 500)
 
 async def process_update_queue():
-    """پردازش به‌روزرسانی‌های موجود در صف"""
     logger.info("Starting update queue processing...")
     application = get_application()
     while True:
@@ -250,8 +212,11 @@ async def process_update_queue():
             json_data = update_queue.get_nowait()
             start_time = time.time()
             update = Update.de_json(json_data, application.bot)
-            await application.process_update(update)
-            logger.info(f"Processed update in {time.time() - start_time:.2f} seconds")
+            if update:
+                await application.process_update(update)
+                logger.info(f"Processed update in {time.time() - start_time:.2f} seconds")
+            else:
+                logger.warning("Received invalid update data")
             update_queue.task_done()
         except Queue.Empty:
             await asyncio.sleep(0.1)
@@ -262,7 +227,6 @@ async def process_update_queue():
 
 @contextmanager
 def get_db_connection():
-    """مدیریت اتصال پایگاه داده با بهینه‌سازی"""
     logger.info("Opening database connection...")
     conn = sqlite3.connect(
         '/opt/render/project/src/bot.db',
@@ -281,7 +245,6 @@ def get_db_connection():
         logger.info("Database connection closed.")
 
 def init_db():
-    """مقداردهی اولیه پایگاه داده"""
     logger.info("Initializing database...")
     try:
         with get_db_connection() as conn:
@@ -319,7 +282,6 @@ def init_db():
 # ==================== توابع ربات ====================
 
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بررسی عضویت کاربر در کانال"""
     user_id = update.effective_user.id
     max_retries = 3
     for attempt in range(max_retries):
@@ -342,7 +304,6 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return False
 
 async def check_membership_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت Callback بررسی عضویت"""
     query = update.callback_query
     try:
         await query.answer()
@@ -363,7 +324,6 @@ async def check_membership_callback(update: Update, context: ContextTypes.DEFAUL
         await query.answer("خطا در بررسی عضویت. لطفاً دوباره تلاش کنید.", show_alert=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """شروع ربات"""
     logger.info(f"Start command received from user {update.effective_user.id}")
     user = update.effective_user
     if await check_membership(update, context):
@@ -400,7 +360,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.effective_message.reply_text("❌ خطایی در ثبت اطلاعات رخ داد.")
 
 async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """شروع فرآیند ثبت آگهی"""
     query = update.callback_query
     if query:
         try:
@@ -419,7 +378,6 @@ async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return AD_TITLE
 
 async def post_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """شروع فرآیند ثبت حواله"""
     query = update.callback_query
     if query:
         try:
@@ -438,7 +396,6 @@ async def post_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return AD_TITLE
 
 async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دریافت عنوان آگهی"""
     if not update.message.text:
         await update.effective_message.reply_text("لطفاً فقط متن وارد کنید.")
         return AD_TITLE
@@ -452,7 +409,6 @@ async def receive_ad_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return AD_DESCRIPTION
 
 async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دریافت توضیحات آگهی"""
     if not update.message.text:
         await update.effective_message.reply_text("لطفاً فقط متن وارد کنید.")
         return AD_DESCRIPTION
@@ -466,7 +422,6 @@ async def receive_ad_description(update: Update, context: ContextTypes.DEFAULT_T
     return AD_PRICE
 
 async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دریافت قیمت آگهی"""
     price = update.message.text.strip().replace(",", "")
     try:
         price_int = int(price)
@@ -489,7 +444,6 @@ async def receive_ad_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AD_PRICE
 
 async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دریافت عکس‌های آگهی"""
     ad = context.user_data['ad']
     if update.message.text and update.message.text.lower() == "هیچ":
         ad['photos'] = []
@@ -518,7 +472,6 @@ async def receive_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AD_PHOTOS
 
 async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """درخواست شماره تلفن"""
     user_id = update.effective_user.id
     try:
         with get_db_connection() as conn:
@@ -552,7 +505,6 @@ async def request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دریافت شماره تلفن"""
     user_id = update.effective_user.id
     phone = None
     if update.message.contact:
@@ -605,7 +557,6 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ذخیره آگهی در پایگاه داده"""
     ad = context.user_data['ad']
     user_id = update.effective_user.id
     try:
@@ -652,7 +603,6 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش پنل مدیریت"""
     query = update.callback_query
     if query:
         try:
@@ -774,7 +724,6 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت اقدامات ادمین (تأیید/رد آگهی)"""
     query = update.callback_query
     try:
         await query.answer()
@@ -905,7 +854,6 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.message.reply_text("❌ خطایی در پردازش درخواست رخ داد.")
 
 async def change_status_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تغییر فیلتر وضعیت در پنل ادمین"""
     query = update.callback_query
     try:
         await query.answer()
@@ -936,7 +884,6 @@ async def change_status_filter(update: Update, context: ContextTypes.DEFAULT_TYP
         await admin_panel(update, context)
 
 async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت Callbackهای ادمین"""
     query = update.callback_query
     try:
         await query.answer()
@@ -984,7 +931,6 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await admin_panel(update, context)
 
 async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش آگهی‌های تأییدشده"""
     query = update.callback_query
     if query:
         try:
@@ -1061,7 +1007,6 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش آمار ربات"""
     query = update.callback_query
     if query:
         try:
@@ -1119,7 +1064,6 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """افزودن ادمین جدید"""
     if update.effective_user.id not in ADMIN_ID:
         await update.effective_message.reply_text("❌ دسترسی غیرمجاز!")
         return
@@ -1155,7 +1099,6 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("❌ خطایی در افزودن مدیر رخ داد.")
 
 async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """حذف ادمین"""
     if update.effective_user.id not in ADMIN_ID:
         await update.effective_message.reply_text("❌ دسترسی غیرمجاز!")
         return
@@ -1196,7 +1139,6 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("❌ خطایی در حذف مدیر رخ داد.")
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """لغو عملیات"""
     context.user_data.clear()
     await update.effective_message.reply_text(
         "❌ عملیات فعلی لغو شد.",
@@ -1206,7 +1148,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت خطاها"""
     logger.error(f"Error processing update {update}: {context.error}", exc_info=context.error)
     if update and update.effective_message:
         try:
@@ -1217,7 +1158,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
             pass
 
 async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش عکس‌های آگهی"""
     query = update.callback_query
     try:
         await query.answer()
@@ -1261,17 +1201,20 @@ async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 init_db()
 update_admin_ids()
 
-# شروع پردازش صف به‌روزرسانی‌ها
 async def main():
-    """شروع ربات و پردازش صف"""
     logger.info("Starting main function...")
-    application = get_application()
-    logger.info("Application initialized.")
-    asyncio.create_task(process_update_queue())
-    logger.info("Update queue processing task created.")
-    logger.info("Starting Flask app...")
-    flask_app.run(host='0.0.0.0', port=PORT)
+    try:
+        application = get_application()
+        logger.info("Application initialized.")
+        logger.info("Starting polling...")
+        await application.start_polling()
+    except Exception as e:
+        logger.error(f"Error in main: {e}", exc_info=True)
+        raise
 
 if __name__ == "__main__":
     logger.info("Running main...")
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        logger.error(f"Error running main: {e}", exc_info=True)
