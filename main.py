@@ -55,6 +55,9 @@ EDIT_AD, SELECT_AD, EDIT_FIELD = range(3)
 # ایجاد اپلیکیشن Flask
 flask_app = Flask(__name__)
 
+# متغیر جهانی برای اپلیکیشن تلگرام
+application = None
+
 # لیست ادمین‌ها
 ADMIN_ID = []
 
@@ -123,7 +126,7 @@ def health_check():
             conn.execute('SELECT 1')
         
         # بررسی وضعیت ربات تلگرام
-        if not application.running:
+        if not application or not application.running:
             raise RuntimeError("Telegram bot is not running")
             
         return {
@@ -293,7 +296,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.commit()
         except sqlite3.Error as e:
             logger.error(f"خطای پایگاه داده در start: {e}")
-            await update.effective_message.reply_text("❌ خطایی در ثبت اطلاعات شما در سیستم رخ داد.")
+            await update.effective_message.reply_text束
 
 async def post_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1079,45 +1082,12 @@ async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ==================== تنظیمات اصلی ربات ====================
 
-def run_flask():
-    flask_app.run(
-        host='0.0.0.0',
-        port=PORT,
-        debug=False,
-        use_reloader=False
-    )
-
-async def run_bot():
-    global application
-    await application.initialize()
-    await application.start()
-    
-    if WEBHOOK_URL:
-        # تنظیم وب‌هوک از طریق API تلگرام
-        try:
-            await application.bot.set_webhook(
-                url=WEBHOOK_URL,
-                secret_token=WEBHOOK_SECRET
-            )
-            logger.info("وب‌هوک با موفقیت تنظیم شد.")
-        except TelegramError as e:
-            logger.error(f"خطا در تنظیم وب‌هوک: {e}")
-            raise
-    
-    # حلقه انتظار برای نگه داشتن ربات در حالت فعال
-    try:
-        while True:
-            await asyncio.sleep(3600)  # هر ساعت بررسی می‌کنه
-    except asyncio.CancelledError:
-        logger.info("حلقه انتظار ربات متوقف شد.")
-        raise
-
-async def main():
+async def init_bot():
+    """راه‌اندازی اپلیکیشن تلگرام"""
+    global application, ADMIN_ID
     logger.info("🔄 راه‌اندازی ربات...")
     init_db()
-    global ADMIN_ID
     ADMIN_ID = load_admin_ids()
-    global application
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
@@ -1163,22 +1133,37 @@ async def main():
     application.add_handler(CallbackQueryHandler(show_ad_photos, pattern="^show_photos_"))
     application.add_error_handler(error_handler)
 
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    logger.info("🌐 سرور Flask برای Webhook و UptimeRobot شروع شد")
+    await application.initialize()
+    await application.start()
+    
+    if WEBHOOK_URL:
+        try:
+            await application.bot.set_webhook(
+                url=WEBHOOK_URL,
+                secret_token=WEBHOOK_SECRET
+            )
+            logger.info("وب‌هوک با موفقیت تنظیم شد.")
+        except TelegramError as e:
+            logger.error(f"خطا در تنظیم وب‌هوک: {e}")
+            raise
 
+async def run_bot_loop():
+    """حلقه انتظار برای نگه داشتن ربات در حالت فعال"""
     try:
-        await run_bot()
-    except Exception as e:
-        logger.critical(f"خطا در اجرای ربات: {e}", exc_info=True)
+        while True:
+            await asyncio.sleep(3600)  # هر ساعت بررسی می‌کنه
+    except asyncio.CancelledError:
+        logger.info("حلقه انتظار ربات متوقف شد.")
         await application.stop()
         await application.shutdown()
-        raise
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("ربات با موفقیت متوقف شد")
-    except Exception as e:
-        logger.critical(f"خطای بحرانی: {e}", exc_info=True)
+def start_bot():
+    """تابع شروع ربات در نخ جداگانه"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(init_bot())
+    loop.run_until_complete(run_bot_loop())
+
+# شروع ربات در نخ جداگانه هنگام بارگذاری ماژول
+bot_thread = threading.Thread(target=start_bot, daemon=True)
+bot_thread.start()
