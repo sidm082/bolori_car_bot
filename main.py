@@ -3,7 +3,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.error import TelegramError
 from aiohttp import web
-from queue import Queue
+import queue  # تغییر از Queue به queue
 import asyncio
 import sqlite3
 from datetime import datetime
@@ -33,7 +33,7 @@ if not all([BOT_TOKEN, WEBHOOK_URL, WEBHOOK_SECRET, CHANNEL_ID, CHANNEL_URL]):
     raise ValueError("Missing environment variables")
 
 # متغیرهای جهانی
-update_queue = Queue()
+update_queue = queue.Queue()  # تغییر به queue.Queue
 app = web.Application()
 ADMIN_ID = [5677216420]  # این مقدار از دیتابیس بارگذاری می‌شود
 FSM_STATES = {}  # دیکشنری برای مدیریت وضعیت‌های FSM
@@ -118,7 +118,7 @@ async def process_update_queue():
             else:
                 logger.warning("Received invalid update data")
             update_queue.task_done()
-        except Queue.Empty:
+        except queue.Empty:  # تغییر از Queue.Empty به queue.Empty
             await asyncio.sleep(0.1)
         except Exception as e:
             logger.error(f"Error processing queued update: {e}", exc_info=True)
