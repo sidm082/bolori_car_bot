@@ -999,15 +999,13 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except BadRequest as e:
             logger.warning(f"Failed to answer callback query: {e}")
             await query.message.reply_text("لطفاً دوباره تلاش کنید.")
-            return
+            return  # تورفتگی: 12 فاصله (3 سطح)
         message = query.message
     else:
         message = update.effective_message
     if update.effective_user.id not in ADMIN_ID:
-        await message.reply
-
-_text("❌ دسترسی غیرمجاز!")
-        return
+        await message.reply_text("❌ دسترسی غیرمجاز!")  # اصلاح خط ناقص
+        return  # تورفتگی: 8 فاصله (2 سطح)
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
