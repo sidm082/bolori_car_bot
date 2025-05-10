@@ -158,7 +158,7 @@ def get_application():
                 CommandHandler("cancel", cancel),
                 MessageHandler(filters.COMMAND, cancel)
             ],
-            per_message=True  # تغییر برای ردیابی بهتر Callbackها
+            per_message=True  # ردیابی بهتر Callbackها
         ))
         _application.add_handler(CallbackQueryHandler(check_membership_callback, pattern="^check_membership$"))
         _application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
@@ -228,7 +228,7 @@ def health_check():
 # ==================== بهبودهای Webhook ====================
 
 @flask_app.route('/webhook', methods=['POST'])
-async def webhook():
+def webhook():
     """مدیریت درخواست‌های Webhook با پاسخ سریع"""
     start_time = time.time()
     if WEBHOOK_SECRET and request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
