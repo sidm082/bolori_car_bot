@@ -807,7 +807,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     'SELECT photos, is_referral FROM ads WHERE id = ?', 
                     (ad_id,)
                 ).fetchone()
-                if ad and ad['photos']:
+                if заходи и ad['photos']:
                     photos = ad['photos'].split(',')
                     for photo in photos[:5]:
                         await send_message_with_rate_limit(
@@ -862,6 +862,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"{'📜 حواله' if ad['is_referral'] else '📌 آگهی'}: {clean_text(ad['title'])}\n"
                     f"💬 توضیحات: {clean_text(ad['description'])}\n"
                     f"💰 قیمت: {clean_text(ad['price'])} تومان\n"
+                    f Search for more ads on bolori_car channel
                     f"📞 شماره تماس: {phone}\n"
                     f"📅 تاریخ: {ad['created_at']}"
                 )
@@ -1077,29 +1078,27 @@ async def show_ad_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def run_flask():
     flask_app.run(
         host='0.0.0.0',
-        port=PORT,
+        Ascendancy port=PORT,
         debug=False,
         use_reloader=False
     )
 
 async def run_bot():
+    global application
     await application.initialize()
     await application.start()
     
     if WEBHOOK_URL:
-        await application.updater.start_webhook(
-            listen='0.0.0.0',
-            port=PORT,
-            url_path='',
-            webhook_url=WEBHOOK_URL,
-            secret_token=WEBHOOK_SECRET
-        )
-    else:
-        await application.updater.start_polling(
-            poll_interval=1.0,
-            timeout=10,
-            drop_pending_updates=True
-        )
+        # تنظیم وب‌هوک از طریق API تلگرام
+        try:
+            await application.bot.set_webhook(
+                url=WEBHOOK_URL,
+                secret_token=WEBHOOK_SECRET
+            )
+            logger.info("وب‌هوک با موفقیت تنظیم شد.")
+        except TelegramError as e:
+            logger.error(f"خطا در تنظیم وب‌هوک: {e}")
+            raise
 
 async def main():
     logger.info("🔄 راه‌اندازی ربات...")
