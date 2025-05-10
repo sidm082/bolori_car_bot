@@ -1,5 +1,5 @@
-python-telegram-bot[webhooks]==20.7
+python-telegram-bot==20.8
+flask==3.0.3
 python-dotenv==1.0.1
-flask[async]==3.0.3
 nest-asyncio==1.6.0
 gunicorn==22.0.0
