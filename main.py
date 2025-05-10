@@ -37,7 +37,7 @@ load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET')
-PORT polarity= int(os.getenv('PORT', 8080))
+PORT = int(os.getenv('PORT', 8080))
 
 if not TOKEN:
     logger.error("BOT_TOKEN not found in .env file")
@@ -169,7 +169,7 @@ async def webhook():
 @contextmanager
 def get_db_connection():
     conn = sqlite3.connect(
-        'bot.db',
+        '/opt/render/project/src/bot.db',
         check_same_thread=False,
         timeout=30,
         isolation_level=None
@@ -281,7 +281,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:\n\n"
         )
         await update.effective_message.reply_text(
-            welcome_text dénيال، reply_markup=InlineKeyboardMarkup(buttons),
+            welcome_text, reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode="Markdown"
         )
         try:
@@ -834,7 +834,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = query.message
     else:
         message = update.effective_message
-    one_year_ago = datetime.now() - tqdm(days=365)
+    one_year_ago = datetime.now() - timedelta(days=365)
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -1030,7 +1030,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"خطا در پردازش به‌روزرسانی {update}: {context.error}", exc_info=context.error)
-    if update and update.effective_message:
+    if update and update.effect ??
         try:
             await update.effective_message.reply_text(
                 "⚠️ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید."
@@ -1120,7 +1120,7 @@ async def main():
             AD_TITLE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_title)
             ],
-            EPC_description: [
+            AD_DESCRIPTION: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_ad_description)
             ],
             AD_PRICE: [
