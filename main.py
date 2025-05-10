@@ -346,6 +346,8 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Unexpected error in save_ad for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ خطایی در پردازش آگهی رخ داد.")
 
+# ... (بخش‌های دیگر کد بدون تغییر باقی می‌مانند)
+
 # تابع ثبت حواله
 async def post_referral_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -356,25 +358,45 @@ async def post_referral_start(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def post_referral_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in FSM_STATES or "state" not in FSM_STATES[user_id]:
+        logger.debug(f"No FSM state for user {user_id}, ignoring message")
         return
     state = FSM_STATES[user_id]["state"]
     message_text = update.message.text
+    logger.debug(f"Handling message for user {user_id} in state {state}")
 
-    if state == "post_referral_title":
-        FSM_STATES[user_id]["title"] = message_text
-        FSM_STATES[user_id]["state"] = "post_referral_description"
-        await update.message.reply_text("لطفاً توضیحات حواله را وارد کنید:")
-    elif state == "post_referral_description":
-        FSM_STATES[user_id]["description"] = message_text
-        FSM_STATES[user_id]["state"] = "post_referral_price"
-        await update.message.reply_text("لطفاً قیمت حواله را به تومان وارد کنید (فقط عدد):")
-    elif state == "post_referral_price":
-        try:
-            price = int(message_text)
-            FSM_STATES[user_id]["price"] = price
-            await save_referral(update, context)
-        except ValueError:
-            await update.message.reply_text("لطفاً فقط عدد وارد کنید:")
+    try:
+        if state == "post_referral_title":
+            FSM_STATES[user_id]["title"] = message_text
+            FSM_STATES[user_id]["state"] = "post_referral_description"
+            await update.message.reply_text("لطفاً توضیحات حواله را وارد کنید:")
+        elif state == "post_referral_description":
+            FSM_STATES[user_id]["description"] = message_text
+            FSM_STATES[user_id]["state"] = "post_referral_price"
+            await update.message.reply_text("لطفاً قیمت حواله را به تومان وارد کنید (فقط عدد):")
+        elif state == "post_referral_price":
+            try:
+                price = int(message_text)
+                FSM_STATES[user_id]["price"] = price
+                FSM_STATES[user_id]["state"] = "post_referral_phone"
+                await update.message.reply_text(
+                    "لطفاً شماره تلفن خود را وارد کنید (با شروع 09 یا +98، مثال: 09123456789 یا +989123456789):"
+                )
+            except ValueError:
+                await update.message.reply_text("لطفاً فقط عدد وارد کنید:")
+        elif state == "post_referral_phone":
+            if re.match(r"^(09|\+98)\d{9}$", message_text):
+                FSM_STATES[user_id]["phone"] = message_text
+                await save_referral(update, context)
+            else:
+                await update.message.reply_text(
+                    "⚠️ شماره تلفن باید با 09 یا +98 شروع شود و 11 یا 12 رقم باشد (مثال: 09123456789 یا +989123456789). لطفاً دوباره وارد کنید:"
+                )
+    except TelegramError as e:
+        logger.error(f"Telegram error in post_referral_handle_message for user {user_id}: {e}", exc_info=True)
+        await update.message.reply_text("❌ خطایی در ارسال پیام رخ داد. لطفاً دوباره تلاش کنید.")
+    except Exception as e:
+        logger.error(f"Unexpected error in post_referral_handle_message for user {user_id}: {e}", exc_info=True)
+        await update.message.reply_text("❌ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید.")
 
 async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -384,11 +406,20 @@ async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor = conn.execute(
                 '''INSERT INTO ads (user_id, type, title, description, price, created_at, status, image_id)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                (user_id, "referral", FSM_STATES[user_id]["title"], FSM_STATES[user_id]["description"],
-                 FSM_STATES[user_id]["price"], datetime.now().isoformat(), "pending", None)
+                (
+                    user_id,
+                    "referral",
+                    FSM_STATES[user_id]["title"],
+                    FSM_STATES[user_id]["description"],
+                    FSM_STATES[user_id]["price"],
+                    datetime.now().isoformat(),
+                    "pending",
+                    None,
+                ),
             )
             ad_id = cursor.lastrowid
             conn.commit()
+        logger.debug(f"Referral saved successfully for user {user_id} with ad_id {ad_id}")
         await update.message.reply_text("✅ حواله شما ثبت شد و در انتظار تأیید ادمین است.")
         # اطلاع به ادمین‌ها
         username = update.effective_user.username or "بدون نام کاربری"
@@ -397,18 +428,163 @@ async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_referral_{ad_id}")],
                 [InlineKeyboardButton("❌ رد", callback_data=f"reject_referral_{ad_id}")]
             ]
+            ad_text = (
+                f"حواله جدید از کاربر {user_id}:\n"
+                f"نام کاربری: @{username}\n"
+                f"شماره تلفن: {FSM_STATES[user_id]['phone']}\n"
+                f"عنوان: {FSM_STATES[user_id]['title']}\n"
+                f"توضیحات: {FSM_STATES[user_id]['description']}\n"
+                f"قیمت: {FSM_STATES[user_id]['price']} تومان"
+            )
             await context.bot.send_message(
                 chat_id=admin_id,
-                text=f"حواله جدید از کاربر {user_id}:\nنام کاربری: @{username}\nعنوان: {FSM_STATES[user_id]['title']}\nتوضیحات: {FSM_STATES[user_id]['description']}\nقیمت: {FSM_STATES[user_id]['price']} تومان",
+                text=ad_text,
                 reply_markup=InlineKeyboardMarkup(buttons)
             )
         del FSM_STATES[user_id]
     except sqlite3.Error as e:
-        logger.error(f"Database error in save_referral: {e}")
+        logger.error(f"Database error in save_referral for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ خطایی در ثبت حواله رخ داد.")
     except TelegramError as e:
-        logger.error(f"Telegram error in save_referral: {e}")
+        logger.error(f"Telegram error in save_referral for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ خطایی در ارسال اعلان به ادمین رخ داد.")
+    except Exception as e:
+        logger.error(f"Unexpected error in save_referral for user {user_id}: {e}", exc_info=True)
+        await update.message.reply_text("❌ خطایی در پردازش حواله رخ داد.")
+
+# تابع مدیریت callbackها (بخش تأیید حواله اصلاح‌شده)
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    callback_data = query.data
+    user_id = update.effective_user.id
+    logger.debug(f"Callback received from user {user_id}: {callback_data}")
+
+    if callback_data == "check_membership":
+        if await check_membership(update, context):
+            await start(update, context)
+        else:
+            await query.message.reply_text("⚠️ شما هنوز در کانال عضو نشده‌اید.")
+    elif callback_data == "post_ad":
+        await post_ad_start(update, context)
+    elif callback_data == "post_referral":
+        await post_referral_start(update, context)
+    elif callback_data == "show_ads":
+        await show_ads(update, context)
+    elif callback_data == "admin_panel":
+        await admin_panel(update, context)
+    elif callback_data == "stats":
+        await stats(update, context)
+    elif callback_data == "review_ads":
+        await review_ads(update, context)
+    elif callback_data.startswith("approve_"):
+        if user_id in ADMIN_ID:
+            try:
+                _, ad_type, ad_id = callback_data.split("_")
+                ad_id = int(ad_id)
+                with get_db_connection() as conn:
+                    ad = conn.execute(
+                        "SELECT user_id, title, description, price, image_id FROM ads WHERE id = ?",
+                        (ad_id,),
+                    ).fetchone()
+                    if not ad:
+                        logger.error(f"Ad with id {ad_id} not found")
+                        await query.message.reply_text("❌ آگهی یا حواله یافت نشد.")
+                        return
+                    conn.execute(
+                        "UPDATE ads SET status = 'approved' WHERE id = ?",
+                        (ad_id,),
+                    )
+                    conn.commit()
+                logger.debug(f"Ad {ad_id} approved by admin {user_id}")
+                await query.message.reply_text(f"✅ {ad_type.capitalize()} با موفقیت تأیید شد.")
+                # اطلاع به کاربر
+                await context.bot.send_message(
+                    chat_id=ad['user_id'],
+                    text=(
+                        f"✅ {ad_type.capitalize()} شما تأیید شد و در کانال منتشر شد:\n"
+                        f"عنوان: {ad['title']}\n"
+                        f"توضیحات: {ad['description']}\n"
+                        f"قیمت: {ad['price']} تومان\n"
+                        f"📢 برای مشاهده موارد دیگر، از دکمه 'نمایش آگهی‌ها' استفاده کنید."
+                    ),
+                )
+                # انتشار در کانال @bolori_car
+                channel_text = (
+                    f"📋 {ad_type.capitalize()} جدید:\n"
+                    f"عنوان: {ad['title']}\n"
+                    f"توضیحات: {ad['description']}\n"
+                    f"قیمت: {ad['price']} تومان\n"
+                    f"📢 برای جزئیات بیشتر به ربات مراجعه کنید: @Bolori_car_bot"
+                )
+                if ad['image_id']:
+                    await context.bot.send_photo(
+                        chat_id=CHANNEL_ID,
+                        photo=ad['image_id'],
+                        caption=channel_text,
+                    )
+                else:
+                    await context.bot.send_message(
+                        chat_id=CHANNEL_ID,
+                        text=channel_text,
+                    )
+                logger.debug(f"Ad {ad_id} published to channel {CHANNEL_ID}")
+            except sqlite3.Error as e:
+                logger.error(f"Database error in approve for ad {ad_id}: {e}", exc_info=True)
+                await query.message.reply_text("❌ خطایی در تأیید آگهی یا حواله رخ داد.")
+            except TelegramError as e:
+                logger.error(f"Telegram error in approve for ad {ad_id}: {e}", exc_info=True)
+                await query.message.reply_text("❌ خطایی در ارسال پیام یا انتشار در کانال رخ داد.")
+            except ValueError as e:
+                logger.error(f"Invalid callback data format: {callback_data}: {e}", exc_info=True)
+                await query.message.reply_text("❌ خطای فرمت داده.")
+            except Exception as e:
+                logger.error(f"Unexpected error in approve for ad {ad_id}: {e}", exc_info=True)
+                await query.message.reply_text("❌ خطایی در پردازش درخواست رخ داد.")
+        else:
+            await query.message.reply_text("⚠️ شما دسترسی ادمین ندارید.")
+    elif callback_data.startswith("reject_"):
+        if user_id in ADMIN_ID:
+            try:
+                _, ad_type, ad_id = callback_data.split("_")
+                ad_id = int(ad_id)
+                with get_db_connection() as conn:
+                    ad = conn.execute(
+                        "SELECT user_id FROM ads WHERE id = ?", (ad_id,)
+                    ).fetchone()
+                    if not ad:
+                        logger.error(f"Ad with id {ad_id} not found")
+                        await query.message.reply_text("❌ آگهی یا حواله یافت نشد.")
+                        return
+                    conn.execute(
+                        "UPDATE ads SET status = 'rejected' WHERE id = ?",
+                        (ad_id,),
+                    )
+                    conn.commit()
+                await query.message.reply_text(f"❌ {ad_type.capitalize()} رد شد.")
+                await context.bot.send_message(
+                    chat_id=ad['user_id'],
+                    text=f"❌ {ad_type.capitalize()} شما رد شد. لطفاً با ادمین تماس بگیرید."
+                )
+            except sqlite3.Error as e:
+                logger.error(f"Database error in reject for ad {ad_id}: {e}", exc_info=True)
+                await query.message.reply_text("❌ خطایی در رد آگهی یا حواله رخ داد.")
+            except TelegramError as e:
+                logger.error(f"Telegram error in reject for ad {ad_id}: {e}", exc_info=True)
+                await query.message.reply_text("❌ خطایی در ارسال پیام رخ داد.")
+            except ValueError as e:
+                logger.error(f"Invalid callback data format: {callback_data}: {e}", exc_info=True)
+                await query.message.reply_text("❌ خطای فرمت داده.")
+            except Exception as e:
+                logger.error(f"Unexpected error in reject for ad {ad_id}: {e}", exc_info=True)
+                await query.message.reply_text("❌ خطایی در پردازش درخواست رخ داد.")
+        else:
+            await query.message.reply_text("⚠️ شما دسترسی ادمین ندارید.")
+    else:
+        logger.warning(f"Unknown callback data: {callback_data}")
+        await query.message.reply_text("⚠️ گزینه ناشناخته.")
+
+# ... (بخش‌های دیگر کد بدون تغییر باقی می‌مانند)
 
 # تابع نمایش آگهی‌ها
 async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
