@@ -307,7 +307,7 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.commit()
         logger.debug(f"Ad saved successfully for user {user_id} with ad_id {ad_id}")
         await update.message.reply_text("آگهی شما با موفقیت ثبت شد و پس از بررسی، در لیست آگهی‌ها نمایش داده خواهد شد. \n "
-        "*از اعتماد شما سپاسگزاریم.*")
+        " *از اعتماد شما متشکریم* ")
         # اطلاع به ادمین‌ها
         username = update.effective_user.username or "بدون نام کاربری"
         for admin_id in ADMIN_ID:
