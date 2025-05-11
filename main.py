@@ -1,7 +1,7 @@
 import logging
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.error import TelegramError
+from telegram.error import TelegramError, Forbidden, BadRequest
 from aiohttp import web
 import queue
 import asyncio
@@ -355,58 +355,62 @@ async def post_referral_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     logger.debug(f"Post referral started for user {user_id}")
     FSM_STATES[user_id] = {"state": "post_referral_title"}
     try:
-        logger.debug(f"Checking chat status for user {user_id}")
-        chat = await context.bot.get_chat(user_id)
-        logger.debug(f"Chat status for user {user_id}: {chat.type}")
         logger.debug(f"Attempting to send title prompt to user {user_id}")
         await update.effective_message.reply_text("لطفاً عنوان حواله را وارد کنید (مثلاً: حواله سایپا):")
         logger.debug(f"Sent title prompt to user {user_id}")
     except Forbidden:
-        logger.error(f"User {user_id} has blocked the bot")
+        logger.error(f"User {user_id} has blocked the bot", exc_info=True)
         try:
             await update.effective_message.reply_text("⚠️ شما ربات را بلاک کرده‌اید. لطفاً ربات را از بلاک خارج کنید.")
         except Exception:
             pass
-        del FSM_STATES[user_id]
+        if user_id in FSM_STATES:
+            del FSM_STATES[user_id]
     except TelegramError as e:
         logger.error(f"Telegram error in post_referral_start for user {user_id}: {e}", exc_info=True)
         try:
             await update.effective_message.reply_text("❌ خطایی در شروع فرآیند حواله رخ داد. لطفاً دوباره تلاش کنید.")
         except Exception:
             logger.error(f"Failed to send error message to user {user_id}", exc_info=True)
-        del FSM_STATES[user_id]
+        if user_id in FSM_STATES:
+            del FSM_STATES[user_id]
     except Exception as e:
         logger.error(f"Unexpected error in post_referral_start for user {user_id}: {e}", exc_info=True)
         try:
             await update.effective_message.reply_text("❌ خطایی در پردازش درخواست رخ داد. لطفاً دوباره تلاش کنید.")
         except Exception:
             logger.error(f"Failed to send error message to user {user_id}", exc_info=True)
-        del FSM_STATES[user_id]
+        if user_id in FSM_STATES:
+            del FSM_STATES[user_id]
     finally:
         logger.debug(f"Current FSM_STATES for user {user_id}: {FSM_STATES.get(user_id, 'None')}")
 
 async def post_referral_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(f"Entering post_referral_handle_message for user {user_id}")
+    
+    # بررسی وجود کاربر در FSM_STATES
     if user_id not in FSM_STATES or "state" not in FSM_STATES[user_id]:
         logger.debug(f"No FSM state for user {user_id}, ignoring message")
-        await update.message.reply_text("⚠️ لطفاً فرآیند ثبت حواله را از ابتدا شروع کنید (/start).")
+        try:
+            await update.message.reply_text("⚠️ لطفاً فرآیند ثبت حواله را از ابتدا شروع کنید (/start).")
+        except Exception as e:
+            logger.error(f"Failed to send invalid state message to user {user_id}: {e}", exc_info=True)
         return
+
     state = FSM_STATES[user_id]["state"]
     message_text = update.message.text
     logger.debug(f"Handling message for user {user_id} in state {state}: {message_text}")
 
     try:
-        logger.debug(f"Checking chat status for user {user_id}")
-        chat = await context.bot.get_chat(user_id)
-        logger.debug(f"Chat status for user {user_id}: {chat.type}")
-
         if state == "post_referral_title":
             logger.debug(f"Processing title for user {user_id}: {message_text}")
             # ذخیره عنوان
+            logger.debug(f"Attempting to store title for user {user_id}")
             FSM_STATES[user_id]["title"] = message_text
             logger.debug(f"Title stored for user {user_id}: {message_text}")
             # تغییر حالت
+            logger.debug(f"Attempting to change state for user {user_id}")
             FSM_STATES[user_id]["state"] = "post_referral_description"
             logger.debug(f"State changed to post_referral_description for user {user_id}")
             # ارسال پیام
