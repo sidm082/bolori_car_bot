@@ -19,7 +19,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 logging.getLogger('telegram').setLevel(logging.DEBUG)
-
+logging.getLogger('httpcore').setLevel(logging.DEBUG)
+logging.getLogger('httpx').setLevel(logging.DEBUG)
 # متغیرهای محیطی
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
@@ -384,6 +385,7 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
     user_id = update.effective_user.id
     if user_id not in FSM_STATES or "state" not in FSM_STATES[user_id]:
         logger.debug(f"No FSM state for user {user_id}, ignoring message")
+        await update.message.reply_text("⚠️ لطفاً فرآیند ثبت حواله را از ابتدا شروع کنید (/start).")
         return
     state = FSM_STATES[user_id]["state"]
     message_text = update.message.text
@@ -391,19 +393,23 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
 
     try:
         # بررسی وضعیت چت
+        logger.debug(f"Checking chat status for user {user_id}")
         chat = await context.bot.get_chat(user_id)
         logger.debug(f"Chat status for user {user_id}: {chat.type}")
         
         if state == "post_referral_title":
-            logger.debug(f"Storing title for user {user_id}: {message_text}")
+            logger.debug(f"Attempting to store title for user {user_id}: {message_text}")
             FSM_STATES[user_id]["title"] = message_text
+            logger.debug(f"Title stored for user {user_id}: {message_text}")
             FSM_STATES[user_id]["state"] = "post_referral_description"
             logger.debug(f"State changed to post_referral_description for user {user_id}")
+            logger.debug(f"Attempting to send description prompt to user {user_id}")
             await update.message.reply_text("لطفاً توضیحات حواله را وارد کنید:")
             logger.debug(f"Sent description prompt to user {user_id}")
         elif state == "post_referral_description":
-            logger.debug(f"Storing description for user {user_id}: {message_text}")
+            logger.debug(f"Attempting to store description for user {user_id}: {message_text}")
             FSM_STATES[user_id]["description"] = message_text
+            logger.debug(f"Description stored for user {user_id}: {message_text}")
             FSM_STATES[user_id]["state"] = "post_referral_price"
             logger.debug(f"State changed to post_referral_price for user {user_id}")
             await update.message.reply_text("لطفاً قیمت حواله را به تومان وارد کنید (فقط عدد):")
@@ -461,7 +467,8 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
         except Exception:
             logger.error(f"Failed to send unexpected error message to user {user_id}", exc_info=True)
         del FSM_STATES[user_id]
-
+    finally:
+        logger.debug(f"Current FSM_STATES for user {user_id}: {FSM_STATES.get(user_id, 'None')}")
 
 async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
