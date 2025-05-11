@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 logging.getLogger('telegram').setLevel(logging.DEBUG)
 logging.getLogger('httpcore').setLevel(logging.DEBUG)
 logging.getLogger('httpx').setLevel(logging.DEBUG)
+
 # متغیرهای محیطی
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
@@ -354,9 +355,10 @@ async def post_referral_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     logger.debug(f"Post referral started for user {user_id}")
     FSM_STATES[user_id] = {"state": "post_referral_title"}
     try:
-        # بررسی وضعیت چت
+        logger.debug(f"Checking chat status for user {user_id}")
         chat = await context.bot.get_chat(user_id)
         logger.debug(f"Chat status for user {user_id}: {chat.type}")
+        logger.debug(f"Attempting to send title prompt to user {user_id}")
         await update.effective_message.reply_text("لطفاً عنوان حواله را وارد کنید (مثلاً: حواله سایپا):")
         logger.debug(f"Sent title prompt to user {user_id}")
     except Forbidden:
@@ -380,6 +382,8 @@ async def post_referral_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception:
             logger.error(f"Failed to send error message to user {user_id}", exc_info=True)
         del FSM_STATES[user_id]
+    finally:
+        logger.debug(f"Current FSM_STATES for user {user_id}: {FSM_STATES.get(user_id, 'None')}")
 
 async def post_referral_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -392,11 +396,10 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
     logger.debug(f"Handling message for user {user_id} in state {state}: {message_text}")
 
     try:
-        # بررسی وضعیت چت
         logger.debug(f"Checking chat status for user {user_id}")
         chat = await context.bot.get_chat(user_id)
         logger.debug(f"Chat status for user {user_id}: {chat.type}")
-        
+
         if state == "post_referral_title":
             logger.debug(f"Attempting to store title for user {user_id}: {message_text}")
             FSM_STATES[user_id]["title"] = message_text
