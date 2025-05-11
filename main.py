@@ -579,7 +579,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(
                     chat_id=ad['user_id'],
                     text=(
-                        f"✅ شما تأیید شد و در کانال منتشر شد:\n"
+                        f"✅ آگهی شما تأیید شد و در کانال منتشر شد:\n"
                         f"عنوان: {ad['title']}\n"
                         f"توضیحات: {ad['description']}\n"
                         f"قیمت: {ad['price']} تومان\n"
@@ -805,7 +805,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     conn.commit()
                 logger.debug(f"Ad {ad_id} approved by admin {user_id}")
-                await query.message.reply_text(f"✅ {ad_type.capitalize()} با موفقیت تأیید شد.")
+                await query.message.reply_text(f"✅ اگهی شما با موفقیت تأیید شد.")
                 # اطلاع به کاربر
                 await context.bot.send_message(
                     chat_id=ad['user_id'],
@@ -850,7 +850,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Unexpected error in approve for ad {ad_id}: {e}", exc_info=True)
                 await query.message.reply_text("❌ خطایی در پردازش درخواست رخ داد.")
         else:
-            await query.message.reply_text("⚠️ شما دسترسی ادمین ندارید.")
+            await query.message.reply_text("⚠️شما ادمین نیستید.")
     elif callback_data.startswith("reject_"):
         if user_id in ADMIN_ID:
             try:
@@ -872,7 +872,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_text(f"❌ {ad_type.capitalize()} رد شد.")
                 await context.bot.send_message(
                     chat_id=ad['user_id'],
-                    text=f"❌ {ad_type.capitalize()} شما رد شد. لطفاً با ادمین تماس بگیرید."
+                    text=f"❌ شما رد شد. لطفاً با ادمین تماس بگیرید."
                 )
             except sqlite3.Error as e:
                 logger.error(f"Database error in reject for ad {ad_id}: {e}", exc_info=True)
@@ -887,7 +887,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Unexpected error in reject for ad {ad_id}: {e}", exc_info=True)
                 await query.message.reply_text("❌ خطایی در پردازش درخواست رخ داد.")
         else:
-            await query.message.reply_text("⚠️ شما دسترسی ادمین ندارید.")
+            await query.message.reply_text("⚠️شما دسترسی ادمین نیستید.")
     else:
         logger.warning(f"Unknown callback data: {callback_data}")
         await query.message.reply_text("⚠️ گزینه ناشناخته.")
