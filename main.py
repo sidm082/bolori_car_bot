@@ -226,7 +226,7 @@ async def post_ad_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(f"Post ad started for user {user_id}")
     FSM_STATES[user_id] = {"state": "post_ad_title"}
-    await update.effective_message.reply_text("لطفاً عنوان آگهی را وارد کنید (مثلاً: فروش پژو 207):")
+    await update.effective_message.reply_text("لطفاً برند و مدل خودروی خود را وارد نمایید.(مثلاً: فروش پژو207 پانا):")
 
 async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -241,12 +241,12 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
             message_text = update.message.text
             FSM_STATES[user_id]["title"] = message_text
             FSM_STATES[user_id]["state"] = "post_ad_description"
-            await update.message.reply_text("لطفاً توضیحات آگهی را وارد کنید:")
+            await update.message.reply_text("لطفا *اطلاعات خودرو* شامل رنگ ، کارکرد ، وضعیت بدنه ، وضعیت فنی و غیره را وارد نمایید.")
         elif state == "post_ad_description":
             message_text = update.message.text
             FSM_STATES[user_id]["description"] = message_text
             FSM_STATES[user_id]["state"] = "post_ad_price"
-            await update.message.reply_text("لطفاً قیمت آگهی را به تومان وارد کنید (فقط عدد):")
+            await update.message.reply_text("*لطفاً قیمت آگهی را به تومان وارد کنید *(فقط عدد):")
         elif state == "post_ad_price":
             message_text = update.message.text
             try:
@@ -263,7 +263,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
             if re.match(r"^(09|\+98)\d{9}$", message_text):
                 FSM_STATES[user_id]["phone"] = message_text
                 FSM_STATES[user_id]["state"] = "post_ad_image"
-                await update.message.reply_text("لطفاً تصویر آگهی را ارسال کنید (یا /skip برای رد کردن):")
+                await update.message.reply_text("کنون لطفاً یک یا چند تصویر واضح از خودرو ارسال نمایید. (حداکثر 5عدد)")
             else:
                 await update.message.reply_text(
                     "⚠️ شماره تلفن باید با 09 یا +98 شروع شود و 11 یا 12 رقم باشد (مثال: 09123456789 یا +989123456789). لطفاً دوباره وارد کنید:"
@@ -279,10 +279,10 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                 await save_ad(update, context)
             else:
                 logger.debug(f"Invalid input for image state from user {user_id}")
-                await update.effective_message.reply_text("لطفاً یک تصویر ارسال کنید یا /skip را بزنید:")
+                await update.effective_message.reply_text("اکنون لطفاً یک یا چند تصویر واضح از خودرو ارسال نمایید. (حداکثر 5عدد)")
     except Exception as e:
         logger.error(f"Error in post_ad_handle_message for user {user_id}: {e}", exc_info=True)
-        await update.effective_message.reply_text("❌ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید.")
+        await update.effective_message.reply_text(" اگر❌ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید.درصورت حل نشدن مشکل با ادمین تماس بگیرید.")
 
 async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -306,7 +306,7 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ad_id = cursor.lastrowid
             conn.commit()
         logger.debug(f"Ad saved successfully for user {user_id} with ad_id {ad_id}")
-        await update.message.reply_text("✅ آگهی شما ثبت شد و در انتظار تأیید ادمین است.")
+        await update.message.reply_text("آگهی شما با موفقیت ثبت شد و پس از بررسی، در لیست آگهی‌ها نمایش داده خواهد شد. /n از اعتماد شما سپاسگزاریم.")
         # اطلاع به ادمین‌ها
         username = update.effective_user.username or "بدون نام کاربری"
         for admin_id in ADMIN_ID:
@@ -345,10 +345,6 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Unexpected error in save_ad for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ خطایی در پردازش آگهی رخ داد.")
-
-# ... (بخش‌های دیگر کد بدون تغییر باقی می‌مانند)
-
-# ... (بخش‌های دیگر کد بدون تغییر باقی می‌مانند)
 
 # تابع ثبت حواله
 async def post_referral_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
