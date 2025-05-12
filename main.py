@@ -547,6 +547,15 @@ async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    if query.data == "post_ad":
+        logger.debug(f"User {user_id} clicked 'ثبت آگهی'")
+        await post_ad_start(update, context)
+    elif query.data == "post_referral":
+        logger.debug(f"User {user_id} clicked 'ثبت حواله'")
+        await post_referral_start(update, context)
+    else:
+        logger.debug(f"Unknown callback data for user {user_id}: {query.data}")
+        await query.message.reply_text("⚠️ گزینه نامعتبر.")
     callback_data = query.data
     user_id = update.effective_user.id
     logger.debug(f"Callback received from user {user_id}: {callback_data}")
@@ -924,13 +933,13 @@ def get_application():
     application.add_handler(CommandHandler("admin", admin))
     application.add_handler(CommandHandler("stats", stats))
     
-    # هندلر برای دکمه‌های اینلاین (ثبت حواله و ثبت آگهی)
+    # هندلر برای دکمه‌های اینلاین
     application.add_handler(CallbackQueryHandler(handle_callback))
     
     # هندلر مشترک برای پیام‌های متنی
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_dispatcher))
     
-    # هندلر برای عکس‌ها (فقط برای فرآیند آگهی)
+    # هندلر برای عکس‌ها (مخصوص آگهی)
     application.add_handler(MessageHandler(filters.PHOTO, post_ad_handle_message))
     
     # هندلر خطا
