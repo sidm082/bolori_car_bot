@@ -190,6 +190,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard
         )
 
+# تابع دستور cancel
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id in FSM_STATES:
+        del FSM_STATES[user_id]
+        await update.message.reply_text("فرآیند لغو شد. برای شروع دوباره، /start را بزنید.")
+    else:
+        await update.message.reply_text("هیچ فرآیند فعالی وجود ندارد.")
+
 # تابع دستور admin
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -486,6 +495,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📋 {ad['type'].capitalize()}: {ad['title']}\n"
                 f"توضیحات: {ad['description']}\n"
                 f"قیمت: {ad['price']} تومان\n"
+                f"شماره تماس: {ad['phone']}\n"
                 f"تاریخ: {ad['created_at']}"
             )
             if ad['image_id']:
@@ -538,6 +548,7 @@ async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📋 {ads['type'].capitalize()}: {ads['title']}\n"
                 f"توضیحات: {ads['description']}\n"
                 f"قیمت: {ads['price']} تومان\n"
+                f"شماره تماس: {ads['phone']}\n"
                 f"کاربر: {ads['user_id']}"
             )
             buttons = [
@@ -563,6 +574,28 @@ async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except TelegramError as e:
             logger.error(f"Telegram error in review_ads: {e}")
             await update.effective_message.reply_text("❌ خطایی در ارسال آگهی رخ داد.")
+
+async def message_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    logger.debug(f"Message dispatcher for user {user_id}: {update.message.text if update.message.text else 'Non-text message'}")
+    
+    if user_id not in FSM_STATES or "state" not in FSM_STATES[user_id]:
+        logger.debug(f"No FSM state for user {user_id}, prompting to start")
+        await update.message.reply_text("لطفاً فرآیند ثبت آگهی یا حواله را با زدن دکمه‌های مربوطه شروع کنید.")
+        return
+
+    state = FSM_STATES[user_id]["state"]
+    logger.debug(f"User {user_id} is in state {state}")
+
+    if state.startswith("post_ad"):
+        await post_ad_handle_message(update, context)
+    elif state.startswith("post_referral"):
+        await post_referral_handle_message(update, context)
+    else:
+        logger.debug(f"Invalid state for user {user_id}: {state}")
+        await update.message.reply_text("⚠️ حالت نامعتبر. لطفاً دوباره فرآیند را شروع کنید.")
+        if user_id in FSM_STATES:
+            del FSM_STATES[user_id]
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -710,6 +743,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 def get_application():
     application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("cancel", cancel))
     application.add_handler(CommandHandler("admin", admin))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CallbackQueryHandler(handle_callback))
