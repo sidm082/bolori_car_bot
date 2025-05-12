@@ -254,7 +254,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
             message_text = update.message.text
             FSM_STATES[user_id]["title"] = message_text
             FSM_STATES[user_id]["state"] = "post_ad_description"
-            await update.message.reply_text("لطفا *اطلاعات خودرو* شامل رنگ ، کارکرد ، وضعیت بدنه ، وضعیت فنی و غیره را وارد نمایید.")
+            await update.message.reply_text("لطفا * اطلاعات خودرو * شامل رنگ ، کارکرد ، وضعیت بدنه ، وضعیت فنی و غیره را وارد نمایید.")
         elif state == "post_ad_description":
             message_text = update.message.text
             FSM_STATES[user_id]["description"] = message_text
@@ -267,7 +267,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                 FSM_STATES[user_id]["price"] = price
                 FSM_STATES[user_id]["state"] = "post_ad_phone"
                 await update.message.reply_text(
-                    "لطفاً شماره تلفن خود را وارد کنید (با شروع 09 یا +98، مثال: 09123456789 یا +989123456789):"
+                    "لطفاً شماره تلفن خود را وارد کنید :"
                 )
             except ValueError:
                 await update.message.reply_text("لطفاً فقط عدد وارد کنید:")
@@ -276,7 +276,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
             if re.match(r"^(09|\+98)\d{9}$", message_text):
                 FSM_STATES[user_id]["phone"] = message_text
                 FSM_STATES[user_id]["state"] = "post_ad_image"
-                await update.message.reply_text("کنون لطفاً یک یا چند تصویر واضح از خودرو ارسال نمایید. (حداکثر 5عدد)")
+                await update.message.reply_text("اکنون لطفاً یک یا چند تصویر واضح از خودرو ارسال نمایید. (حداکثر 5عدد)")
             else:
                 await update.message.reply_text(
                     "⚠️ شماره تلفن باید با 09 یا +98 شروع شود و 11 یا 12 رقم باشد (مثال: 09123456789 یا +989123456789). لطفاً دوباره وارد کنید:"
@@ -520,7 +520,8 @@ async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ad_id = cursor.lastrowid
             conn.commit()
         logger.debug(f"Referral saved successfully for user {user_id} with ad_id {ad_id}")
-        await update.message.reply_text("✅ حواله شما ثبت شد و در انتظار تأیید ادمین است.")
+        await update.message.reply_text("✅ حواله شما ثبت شد و در انتظار تأیید ادمین است.\n"
+                                       "*ممنون از اعتماد شما*")
         logger.debug(f"Sent confirmation message to user {user_id}")
         # اطلاع به ادمین‌ها
         username = update.effective_user.username or "بدون نام کاربری"
