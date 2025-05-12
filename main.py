@@ -25,6 +25,30 @@ logger = logging.getLogger(__name__)
 logging.getLogger('telegram').setLevel(logging.DEBUG)
 logging.getLogger('httpcore').setLevel(logging.DEBUG)
 logging.getLogger('httpx').setLevel(logging.DEBUG)
+
+async def message_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    logger.debug(f"Message dispatcher for user {user_id}: {update.message.text}")
+    
+    # بررسی وجود کاربر در FSM_STATES
+    if user_id not in FSM_STATES or "state" not in FSM_STATES[user_id]:
+        logger.debug(f"No FSM state for user {user_id}, prompting to start")
+        await update.message.reply_text("⚠️ لطفاً فرآیند را از ابتدا شروع کنید (/start).")
+        return
+    
+    state = FSM_STATES[user_id]["state"]
+    logger.debug(f"User {user_id} is in state: {state}")
+    
+    # هدایت پیام به هندلر مناسب بر اساس حالت
+    if state.startswith("post_referral"):
+        await post_referral_handle_message(update, context)
+    elif state.startswith("post_ad"):
+        await post_ad_handle_message(update, context)
+    else:
+        logger.debug(f"Invalid state for user {user_id}: {state}")
+        await update.message.reply_text("⚠️ حالت نامعتبر. لطفاً دوباره شروع کنید (/start).")
+        if user_id in FSM_STATES:
+            del FSM_STATES[user_id]
 # متغیرهای محیطی
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
@@ -942,20 +966,27 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception:
             pass
-
-# تابع دریافت برنامه
 def get_application():
     application = Application.builder().token(BOT_TOKEN).build()
+    
+    # هندلرهای دستورات
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin))
     application.add_handler(CommandHandler("stats", stats))
-    application.add_handler(CallbackQueryHandler(handle_callback))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, post_referral_handle_message))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, post_ad_handle_message))
-    application.add_handler(MessageHandler(filters.PHOTO, post_ad_handle_message))
-    application.add_error_handler(error_handler)
-    return application
     
+    # هندلر برای دکمه‌های اینلاین (ثبت حواله و ثبت آگهی)
+    application.add_handler(CallbackQueryHandler(handle_callback))
+    
+    # هندلر مشترک برای پیام‌های متنی
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_dispatcher))
+    
+    # هندلر برای عکس‌ها (فقط برای فرآیند آگهی)
+    application.add_handler(MessageHandler(filters.PHOTO, post_ad_handle_message))
+    
+    # هندلر خطا
+    application.add_handler(error_handler)
+    
+    return application
 
 # تابع اصلی
 async def main():
