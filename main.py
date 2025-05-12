@@ -290,9 +290,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                 price = int(message_text)
                 FSM_STATES[user_id]["price"] = price
                 FSM_STATES[user_id]["state"] = "post_ad_phone"
-                await update.message.reply_text(
-                    "لطفاً شماره تلفن خود را وارد کنید :"
-                )
+                await update.message.reply_text("لطفاً شماره تلفن خود را وارد کنید :")
             except ValueError:
                 await update.message.reply_text("لطفاً فقط عدد وارد کنید:")
         elif state == "post_ad_phone":
@@ -319,7 +317,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                 await update.effective_message.reply_text("اکنون لطفاً یک یا چند تصویر واضح از خودرو ارسال نمایید. (حداکثر 5عدد)")
     except Exception as e:
         logger.error(f"Error in post_ad_handle_message for user {user_id}: {e}", exc_info=True)
-        await update.effective_message.reply_text(" اگر❌ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید.درصورت حل نشدن مشکل با ادمین تماس بگیرید.")
+        await update.effective_message.reply_text("❌ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید. در صورت حل نشدن مشکل با ادمین تماس بگیرید.")
 
 async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -392,12 +390,9 @@ async def post_referral_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.debug(f"Attempting to send title prompt to user {user_id}")
         await update.effective_message.reply_text("لطفاً عنوان حواله را وارد کنید (مثلاً: حواله سایپا):")
         logger.debug(f"Sent title prompt to user {user_id}")
-    except Forbidden:
-        logger.error(f"User {user_id} has blocked the bot", exc_info=True)
-        try:
-            await update.effective_message.reply_text("⚠️ شما ربات را بلاک کرده‌اید. لطفاً ربات را از بلاک خارج کنید.")
-        except Exception:
-            pass
+    except Exception as e:
+        logger.error(f"Error in post_referral_start for user {user_id}: {e}", exc_info=True)
+        await update.effective_message.reply_text("❌ خطایی در شروع فرآیند حواله رخ داد. لطفاً دوباره تلاش کنید.")
         if user_id in FSM_STATES:
             del FSM_STATES[user_id]
     except TelegramError as e:
@@ -423,7 +418,6 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
     user_id = update.effective_user.id
     logger.debug(f"Entering post_referral_handle_message for user {user_id}")
     
-    # بررسی وجود کاربر در FSM_STATES
     if user_id not in FSM_STATES or "state" not in FSM_STATES[user_id]:
         logger.debug(f"No FSM state for user {user_id}, ignoring message")
         try:
@@ -431,96 +425,41 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
         except Exception as e:
             logger.error(f"Failed to send invalid state message to user {user_id}: {e}", exc_info=True)
         return
-
     state = FSM_STATES[user_id]["state"]
     message_text = update.message.text
     logger.debug(f"Handling message for user {user_id} in state {state}: {message_text}")
-
-    try:
+   try:
         if state == "post_referral_title":
-            logger.debug(f"Processing title for user {user_id}: {message_text}")
-            # ذخیره عنوان
-            logger.debug(f"Attempting to store title for user {user_id}")
             FSM_STATES[user_id]["title"] = message_text
-            logger.debug(f"Title stored for user {user_id}: {message_text}")
-            # تغییر حالت
-            logger.debug(f"Attempting to change state for user {user_id}")
             FSM_STATES[user_id]["state"] = "post_referral_description"
-            logger.debug(f"State changed to post_referral_description for user {user_id}")
-            # ارسال پیام
-            logger.debug(f"Attempting to send description prompt to user {user_id}")
             await update.message.reply_text("لطفاً توضیحات حواله را وارد کنید:")
-            logger.debug(f"Sent description prompt to user {user_id}")
         elif state == "post_referral_description":
-            logger.debug(f"Processing description for user {user_id}: {message_text}")
             FSM_STATES[user_id]["description"] = message_text
-            logger.debug(f"Description stored for user {user_id}: {message_text}")
             FSM_STATES[user_id]["state"] = "post_referral_price"
-            logger.debug(f"State changed to post_referral_price for user {user_id}")
             await update.message.reply_text("لطفاً قیمت حواله را به تومان وارد کنید (فقط عدد):")
-            logger.debug(f"Sent price prompt to user {user_id}")
         elif state == "post_referral_price":
-            logger.debug(f"Processing price for user {user_id}: {message_text}")
             try:
                 price = int(message_text)
                 FSM_STATES[user_id]["price"] = price
-                logger.debug(f"Price stored for user {user_id}: {price}")
                 FSM_STATES[user_id]["state"] = "post_referral_phone"
-                logger.debug(f"State changed to post_referral_phone for user {user_id}")
                 await update.message.reply_text(
                     "لطفاً شماره تلفن خود را وارد کنید (با شروع 09 یا +98، مثال: 09123456789 یا +989123456789):"
                 )
-                logger.debug(f"Sent phone prompt to user {user_id}")
             except ValueError:
                 await update.message.reply_text("لطفاً فقط عدد وارد کنید:")
-                logger.debug(f"Invalid price input from user {user_id}: {message_text}")
         elif state == "post_referral_phone":
-            logger.debug(f"Processing phone for user {user_id}: {message_text}")
             if re.match(r"^(09|\+98)\d{9}$", message_text):
                 FSM_STATES[user_id]["phone"] = message_text
-                logger.debug(f"Phone number stored for user {user_id}: {message_text}")
                 await save_referral(update, context)
-                logger.debug(f"Referral saved for user {user_id}")
             else:
                 await update.message.reply_text(
                     "⚠️ شماره تلفن باید با 09 یا +98 شروع شود و 11 یا 12 رقم باشد (مثال: 09123456789 یا +989123456789). لطفاً دوباره وارد کنید:"
                 )
-                logger.debug(f"Invalid phone number input from user {user_id}: {message_text}")
-    except Forbidden:
-        logger.error(f"User {user_id} has blocked the bot", exc_info=True)
-        try:
-            await update.message.reply_text("⚠️ شما ربات را بلاک کرده‌اید. لطفاً ربات را از بلاک خارج کنید.")
-        except Exception:
-            logger.error(f"Failed to send block error message to user {user_id}", exc_info=True)
-        if user_id in FSM_STATES:
-            del FSM_STATES[user_id]
-    except BadRequest as e:
-        logger.error(f"Bad request error in post_referral_handle_message for user {user_id}: {e}", exc_info=True)
-        try:
-            await update.message.reply_text("❌ خطایی در پردازش پیام شما رخ داد. لطفاً دوباره تلاش کنید.")
-        except Exception:
-            logger.error(f"Failed to send bad request error message to user {user_id}", exc_info=True)
-        if user_id in FSM_STATES:
-            del FSM_STATES[user_id]
-    except TelegramError as e:
-        logger.error(f"Telegram error in post_referral_handle_message for user {user_id}: {e}", exc_info=True)
-        try:
-            await update.message.reply_text("❌ خطایی در ارسال پیام رخ داد. لطفاً دوباره تلاش کنید.")
-        except Exception:
-            logger.error(f"Failed to send telegram error message to user {user_id}", exc_info=True)
-        if user_id in FSM_STATES:
-            del FSM_STATES[user_id]
     except Exception as e:
-        logger.error(f"Unexpected error in post_referral_handle_message for user {user_id}: {e}", exc_info=True)
-        try:
-            await update.message.reply_text("❌ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید.")
-        except Exception:
-            logger.error(f"Failed to send unexpected error message to user {user_id}", exc_info=True)
+        logger.error(f"Error in post_referral_handle_message for user {user_id}: {e}", exc_info=True)
+        await update.message.reply_text("❌ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید.")
         if user_id in FSM_STATES:
             del FSM_STATES[user_id]
-    finally:
-        logger.debug(f"Exiting post_referral_handle_message for user {user_id}")
-        logger.debug(f"Current FSM_STATES for user {user_id}: {FSM_STATES.get(user_id, 'None')}")
 
 async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
