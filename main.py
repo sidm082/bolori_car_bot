@@ -25,19 +25,8 @@ logger = logging.getLogger(__name__)
 logging.getLogger('telegram').setLevel(logging.DEBUG)
 logging.getLogger('httpcore').setLevel(logging.DEBUG)
 logging.getLogger('httpx').setLevel(logging.DEBUG)
-
-async def message_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    logger.debug(f"Message dispatcher for user {user_id}: {update.message.text}")
-    
-    # بررسی وجود کاربر در FSM_STATES
-    if user_id not in FSM_STATES or "state" not in FSM_STATES[user_id]:
-        logger.debug(f"No FSM state for user {user_id}, prompting to start")
-        await update.message.reply_text("⚠️ لطفاً فرآیند را از ابتدا شروع کنید (/start).")
-        return
-    
-    state = FSM_STATES[user_id]["state"]
-    logger.debug(f"User {user_id} is in state: {state}")
+state = FSM_STATES[user_id]["state"]
+logger.debug(f"User {user_id} is in state: {state}")
     
     # هدایت پیام به هندلر مناسب بر اساس حالت
     if state.startswith("post_referral"):
