@@ -27,6 +27,7 @@ logging.getLogger('httpcore').setLevel(logging.DEBUG)
 logging.getLogger('httpx').setLevel(logging.DEBUG)
 state = FSM_STATES[user_id]["state"]
 logger.debug(f"User {user_id} is in state: {state}")
+FSM_STATES = {}
 
 # متغیرهای محیطی
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -44,7 +45,6 @@ update_queue = queue.Queue()
 app = web.Application()
 APPLICATION = None
 ADMIN_ID = [5677216420]
-FSM_STATES = {}
 
 # تابع اتصال به دیتابیس
 def get_db_connection():
