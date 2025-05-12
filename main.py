@@ -429,7 +429,7 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
     state = FSM_STATES[user_id]["state"]
     message_text = update.message.text
     logger.debug(f"Handling message for user {user_id} in state {state}: {message_text}")
-   try:
+    try:
         if state == "post_referral_title":
             FSM_STATES[user_id]["title"] = message_text
             FSM_STATES[user_id]["state"] = "post_referral_description"
