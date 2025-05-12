@@ -27,17 +27,7 @@ logging.getLogger('httpcore').setLevel(logging.DEBUG)
 logging.getLogger('httpx').setLevel(logging.DEBUG)
 state = FSM_STATES[user_id]["state"]
 logger.debug(f"User {user_id} is in state: {state}")
-    
-    # هدایت پیام به هندلر مناسب بر اساس حالت
-    if state.startswith("post_referral"):
-        await post_referral_handle_message(update, context)
-    elif state.startswith("post_ad"):
-        await post_ad_handle_message(update, context)
-    else:
-        logger.debug(f"Invalid state for user {user_id}: {state}")
-        await update.message.reply_text("⚠️ حالت نامعتبر. لطفاً دوباره شروع کنید (/start).")
-        if user_id in FSM_STATES:
-            del FSM_STATES[user_id]
+
 # متغیرهای محیطی
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
