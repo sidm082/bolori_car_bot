@@ -749,12 +749,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"توضیحات: {ad['description']}\n"
                     f"قیمت: {ad['price']} تومان\n"
                     f"📢 برای جزئیات بیشتر به ربات مراجعه کنید: @Bolori_car_bot\n"
-                    f"""\n➖➖➖➖➖
-                    ☑️ *اتوگالــری بلـــوری*
-                    ▫️خرید▫️فروش▫️کارشناسی
-                    +989153632957
-                    ➖➖➖➖
-                    @Bolori_Car"""
+                    f"""➖➖➖➖➖
+☑️ اتوگالــری بلـــوری
+▫️خرید▫️فروش▫️کارشناسی
+
++989153632957
+➖➖➖➖
+@Bolori_Car
+جهت ثبت آگهی تان به ربات زیر مراجعه کنید.
+@bolori_car_bot"""
                 )
                 if ad['image_id']:
                     await context.bot.send_photo(
