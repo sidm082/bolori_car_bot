@@ -834,9 +834,15 @@ def get_application():
     application.add_handler(CommandHandler("cancel", cancel))
     application.add_handler(CommandHandler("admin", admin))
     application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("done", post_ad_handle_message))  # اضافه کردن دستور /done
     application.add_handler(CallbackQueryHandler(handle_callback))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_dispatcher))
-    application.add_handler(MessageHandler(filters.PHOTO, post_ad_handle_message))
+    
+    # تغییر اصلی اینجا است:
+    application.add_handler(MessageHandler(
+        filters.TEXT | filters.PHOTO | filters.COMMAND,  # دریافت متن، عکس و دستورات
+        message_dispatcher  # همه را ابتدا به dispatcher ارسال کن
+    ))
+    
     application.add_error_handler(error_handler)
     return application
 
