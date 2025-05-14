@@ -329,10 +329,11 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             ad_id = cursor.lastrowid
             conn.commit()
-        logger.debug(f"Ad saved successfully for user {user_id} with ad_id {ad_id}")
-        await update.message.reply_text("آگهی شما با موفقیت ثبت شد و پس از بررسی، در لیست آگهی‌ها نمایش داده خواهد شد.\n*از اعتماد شما متشکریم*")
         
-        # اطلاع به ادمین‌ها
+        logger.debug(f"Ad saved successfully for user {user_id} with ad_id {ad_id}")
+        await update.message.reply_text("✅ آگهی شما با موفقیت ثبت شد و پس از بررسی، در کانال منتشر خواهد شد.")
+        
+        # اطلاع به ادمین‌ها با تمام عکس‌ها
         username = update.effective_user.username or "بدون نام کاربری"
         for admin_id in ADMIN_ID:
             buttons = [
@@ -345,11 +346,11 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"شماره تلفن: {FSM_STATES[user_id]['phone']}\n"
                 f"عنوان: {FSM_STATES[user_id]['title']}\n"
                 f"توضیحات: {FSM_STATES[user_id]['description']}\n"
-                f"قیمت: {FSM_STATES[user_id]['price']} تومان\n"
+                f"قیمت: {FSM_STATES[user_id]['price']:,} تومان\n"
                 f"تعداد عکس‌ها: {len(FSM_STATES[user_id]['images'])}"
             )
             
-            # ارسال اولین عکس به همراه دکمه‌ها
+            # ارسال اولین عکس با توضیحات و دکمه‌ها
             if FSM_STATES[user_id]["images"]:
                 await context.bot.send_photo(
                     chat_id=admin_id,
@@ -366,17 +367,11 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text=ad_text,
                     reply_markup=InlineKeyboardMarkup(buttons),
                 )
+        
         del FSM_STATES[user_id]
-    except sqlite3.Error as e:
-        logger.error(f"Database error in save_ad for user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text("❌ خطایی در ثبت آگهی رخ داد.")
-    except TelegramError as e:
-        logger.error(f"Telegram error in save_ad for user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text("❌ خطایی در ارسال اعلان به ادمین رخ داد.")
     except Exception as e:
-        logger.error(f"Unexpected error in save_ad for user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text("❌ خطایی در پردازش آگهی رخ داد.")
-
+        logger.error(f"Error in save_ad: {str(e)}", exc_info=True)
+        await update.message.reply_text("❌ خطایی در ثبت آگهی رخ داد. لطفاً دوباره تلاش کنید.")
 async def post_referral_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(f"Post referral started for user {user_id}")
