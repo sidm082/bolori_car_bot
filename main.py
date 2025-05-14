@@ -728,13 +728,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         logger.error(f"Ad with id {ad_id} not found")
                         await query.message.reply_text("❌ آگهی یافت نشد.")
                         return
+                    
+                    # تبدیل JSON به لیست عکس‌ها
+                    try:
+                        images = json.loads(ad['image_id']) if ad['image_id'] else []
+                    except:
+                        images = [ad['image_id']] if ad['image_id'] else []
+                    
                     conn.execute(
                         "UPDATE ads SET status = 'approved' WHERE id = ?",
                         (ad_id,),
                     )
                     conn.commit()
+                
                 logger.debug(f"Ad {ad_id} approved by admin {user_id}")
                 await query.message.reply_text(f"✅ آگهی/حواله با موفقیت تأیید شد.")
+                
                 # اطلاع به کاربر
                 await context.bot.send_message(
                     chat_id=ad['user_id'],
@@ -742,17 +751,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"✅ {ad_type.capitalize()} شما تأیید شد و در کانال منتشر شد:\n"
                         f"عنوان: {ad['title']}\n"
                         f"توضیحات: {ad['description']}\n"
-                        f"قیمت: {ad['price']} تومان\n\n"
-                      
+                        f"قیمت: {ad['price']:,} تومان\n\n"
                         f"📢 برای مشاهده آگهی‌های دیگر، از دکمه 'نمایش آگهی‌ها' استفاده کنید."
                     ),
                 )
+                
                 # انتشار در کانال @bolori_car
                 channel_text = (
-                    f"آگهی جدید:\n"
+                    f"🚗 آگهی جدید:\n"
                     f"عنوان: {ad['title']}\n"
                     f"توضیحات: {ad['description']}\n"
-                    f"قیمت: {ad['price']} تومان\n"
+                    f"قیمت: {ad['price']:,} تومان\n"
+                    f"📞 تماس: {ad['phone']}\n\n"
                     f"📢 برای جزئیات بیشتر به ربات مراجعه کنید: @Bolori_car_bot\n"
                     f"""➖➖➖➖➖
 ☑️ اتوگالــری بلـــوری
@@ -764,18 +774,28 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 جهت ثبت آگهی تان به ربات زیر مراجعه کنید.
 @bolori_car_bot"""
                 )
-                if ad['image_id']:
+                
+                if images:
+                    # ارسال اولین عکس با توضیحات
                     await context.bot.send_photo(
                         chat_id=CHANNEL_ID,
-                        photo=ad['image_id'],
+                        photo=images[0],
                         caption=channel_text,
                     )
+                    # ارسال بقیه عکس‌ها
+                    for photo in images[1:]:
+                        await context.bot.send_photo(
+                            chat_id=CHANNEL_ID,
+                            photo=photo
+                        )
                 else:
                     await context.bot.send_message(
                         chat_id=CHANNEL_ID,
                         text=channel_text,
                     )
+                
                 logger.debug(f"Ad {ad_id} published to channel {CHANNEL_ID}")
+                
             except sqlite3.Error as e:
                 logger.error(f"Database error in approve for ad {ad_id}: {e}", exc_info=True)
                 await query.message.reply_text("❌ خطایی در تأیید آگهی رخ داد.")
