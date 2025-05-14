@@ -554,28 +554,37 @@ async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    logger.debug(f"Show ads requested by user {user_id}")
     try:
         with get_db_connection() as conn:
             ads = conn.execute(
                 "SELECT * FROM ads WHERE status = 'approved' ORDER BY created_at DESC LIMIT 5"
             ).fetchall()
+        
         if not ads:
-            await update.effective_message.reply_text("📪 هیچ آگهی تأییدشده‌ای یافت نشد.")
+            await update.effective_message.reply_text("📭 هیچ آگهی فعالی موجود نیست.")
             return
+            
         for ad in ads:
-            ad_text = (
-                f"📋 {ad['type'].capitalize()}: {ad['title']}\n"
-                f"توضیحات: {ad['description']}\n"
-                f"قیمت: {ad['price']} تومان\n"
-                f"شماره تماس: {ad['phone']}\n"
-                f"تاریخ: {ad['created_at']}"
-            )
-            # تبدیل JSON ذخیره شده به لیست
+            # تبدیل JSON به لیست عکس‌ها
             try:
                 images = json.loads(ad['image_id']) if ad['image_id'] else []
             except:
                 images = [ad['image_id']] if ad['image_id'] else []
+            
+            ad_text = (
+                f"🚗 {ad['title']}\n"
+                f"📝 توضیحات: {ad['description']}\n"
+                f"💰 قیمت: {ad['price']:,} تومان\n"
+                f"""➖➖➖➖➖
+☑️ اتوگالــری بلـــوری
+▫️خرید▫️فروش▫️کارشناسی
+
++989153632957
+➖➖➖➖
+@Bolori_Car
+جهت ثبت آگهی تان به ربات زیر مراجعه کنید.
+@bolori_car_bot"""
+            )
             
             if images:
                 # ارسال اولین عکس با توضیحات
@@ -586,18 +595,19 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 # ارسال بقیه عکس‌ها
                 for photo in images[1:]:
-                    await context.bot.send_photo(chat_id=user_id, photo=photo)
+                    await context.bot.send_photo(
+                        chat_id=user_id,
+                        photo=photo
+                    )
             else:
                 await context.bot.send_message(
                     chat_id=user_id,
                     text=ad_text
                 )
-    except sqlite3.Error as e:
-        logger.error(f"Database error in show_ads: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error showing ads: {str(e)}", exc_info=True)
         await update.effective_message.reply_text("❌ خطایی در نمایش آگهی‌ها رخ داد.")
-    except TelegramError as e:
-        logger.error(f"Telegram error in show_ads: {e}")
-        await update.effective_message.reply_text("❌ خطایی در ارسال آگهی‌ها رخ داد.")
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
