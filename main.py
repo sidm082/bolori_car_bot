@@ -565,7 +565,6 @@ async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📋 {ads['type'].capitalize()}: {ads['title']}\n"
                 f"توضیحات: {ads['description']}\n"
                 f"قیمت: {ads['price']} تومان\n"
-                f"شماره تماس: {ads['phone']}\n"
                 f"کاربر: {ads['user_id']}"
             )
             buttons = [
@@ -686,7 +685,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"عنوان: {ad['title']}\n"
                     f"توضیحات: {ad['description']}\n"
                     f"قیمت: {ad['price']:,} تومان\n"
-                    f"📞 تماس: {ad['phone']}\n\n"
                     f"📢 برای جزئیات بیشتر به ربات مراجعه کنید: @Bolori_car_bot\n"
                     f"""➖➖➖➖➖
 ☑️ اتوگالــری بلـــوری
