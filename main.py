@@ -420,69 +420,6 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
         if user_id in FSM_STATES:
             del FSM_STATES[user_id]
 
-async def save_post_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    logger.debug(f"Saving ad for user {user_id}")
-    try:
-        with get_db_connection() as conn:
-            cursor = conn.execute(
-                '''INSERT INTO ads (user_id, type, title, description, price, created_at, status, image_id, phone)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (
-                    user_id,
-                    "ad",
-                    FSM_STATES[user_id]["title"],
-                    FSM_STATES[user_id]["description"],
-                   FSM_STATES[user_id]["price"],
-                    datetime.now().isoformat(),
-                    "pending",
-                    FSM_STATES[user_id].get("image_id"),
-                    FSM_STATES[user_id]["phone"],
-                ),
-            )
-            ad_id = cursor.lastrowid
-            conn.commit()
-        logger.debug(f"Ad saved successfully for user {user_id} with ad_id {ad_id}")
-        await update.message.reply_text("آگهی شما با موفقیت ثبت شد و پس از بررسی، در لیست آگهی‌ها نمایش داده خواهد شد.\n*از اعتماد شما متشکریم*")
-        # اطلاع به ادمین‌ها
-        username = update.effective_user.username or "بدون نام کاربری"
-        for admin_id in ADMIN_ID:
-            buttons = [
-                [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_ad_{ad_id}")],
-                [InlineKeyboardButton("❌ رد", callback_data=f"reject_ad_{ad_id}")],
-            ]
-            ad_text = (
-                f"آگهی جدید از کاربر {user_id}:\n"
-                f"نام کاربری: @{username}\n"
-                f"شماره تلفن: {FSM_STATES[user_id]['phone']}\n"
-                f"عنوان: {FSM_STATES[user_id]['title']}\n"
-                f"توضیحات: {FSM_STATES[user_id]['description']}\n"
-                f"قیمت: {FSM_STATES[user_id]['price']} تومان"
-            )
-            if FSM_STATES[user_id].get("image_id"):
-                await context.bot.send_photo(
-                    chat_id=admin_id,
-                    photo=FSM_STATES[user_id]["image_id"],
-                    caption=ad_text,
-                    reply_markup=InlineKeyboardMarkup(buttons),
-                )
-            else:
-                await context.bot.send_message(
-                    chat_id=admin_id,
-                    text=ad_text,
-                    reply_markup=InlineKeyboardMarkup(buttons),
-                )
-        del FSM_STATES[user_id]
-    except sqlite3.Error as e:
-        logger.error(f"Database error in save_ad for user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text("❌ خطایی در ثبت آگهی رخ داد.")
-    except TelegramError as e:
-        logger.error(f"Telegram error in save_ad for user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text("❌ خطایی در ارسال اعلان به ادمین رخ داد.")
-    except Exception as e:
-        logger.error(f"Unexpected error in save_ad for user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text("❌ خطایی در پردازش آگهی رخ داد.")
-
 async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(f"Saving referral for user {user_id}")
