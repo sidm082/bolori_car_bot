@@ -310,7 +310,7 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         with get_db_connection() as conn:
             # تبدیل لیست عکس‌ها به JSON برای ذخیره در دیتابیس
-            images_json = json.dumps(FSM_STATES[user_id]["images"])
+            images_json = json.dumps(FSM_STATES[user_id].get("images", []))
             
             cursor = conn.execute(
                 '''INSERT INTO ads (user_id, type, title, description, price, created_at, status, image_id, phone)
@@ -323,7 +323,7 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     FSM_STATES[user_id]["price"],
                     datetime.now().isoformat(),
                     "pending",
-                    images_json,  # ذخیره تمام عکس‌ها به صورت JSON
+                    images_json,
                     FSM_STATES[user_id]["phone"],
                 ),
             )
@@ -335,6 +335,8 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # اطلاع به ادمین‌ها با تمام عکس‌ها
         username = update.effective_user.username or "بدون نام کاربری"
+        images = FSM_STATES[user_id].get("images", [])
+        
         for admin_id in ADMIN_ID:
             buttons = [
                 [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_ad_{ad_id}")],
@@ -347,19 +349,17 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"عنوان: {FSM_STATES[user_id]['title']}\n"
                 f"توضیحات: {FSM_STATES[user_id]['description']}\n"
                 f"قیمت: {FSM_STATES[user_id]['price']:,} تومان\n"
-                f"تعداد عکس‌ها: {len(FSM_STATES[user_id]['images'])}"
+                f"تعداد عکس‌ها: {len(images)}"
             )
             
-            # ارسال اولین عکس با توضیحات و دکمه‌ها
-            if FSM_STATES[user_id]["images"]:
+            if images:
                 await context.bot.send_photo(
                     chat_id=admin_id,
-                    photo=FSM_STATES[user_id]["images"][0],
+                    photo=images[0],
                     caption=ad_text,
                     reply_markup=InlineKeyboardMarkup(buttons),
                 )
-                # ارسال بقیه عکس‌ها
-                for photo in FSM_STATES[user_id]["images"][1:]:
+                for photo in images[1:]:
                     await context.bot.send_photo(chat_id=admin_id, photo=photo)
             else:
                 await context.bot.send_message(
@@ -372,19 +372,6 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in save_ad: {str(e)}", exc_info=True)
         await update.message.reply_text("❌ خطایی در ثبت آگهی رخ داد. لطفاً دوباره تلاش کنید.")
-async def post_referral_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    logger.debug(f"Post referral started for user {user_id}")
-    FSM_STATES[user_id] = {"state": "post_referral_title"}
-    try:
-        logger.debug(f"Attempting to send title prompt to user {user_id}")
-        await update.effective_message.reply_text("لطفاً عنوان حواله را وارد کنید (مثلاً: حواله سایپا):")
-        logger.debug(f"Sent title prompt to user {user_id}")
-    except Exception as e:
-        logger.error(f"Error in post_referral_start for user {user_id}: {e}", exc_info=True)
-        await update.effective_message.reply_text("❌ خطایی در شروع فرآیند حواله رخ داد. لطفاً دوباره تلاش کنید.")
-        if user_id in FSM_STATES:
-            del FSM_STATES[user_id]
 
 async def post_referral_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
