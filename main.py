@@ -420,7 +420,7 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
         if user_id in FSM_STATES:
             del FSM_STATES[user_id]
 
-async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def save_post_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(f"Saving ad for user {user_id}")
     try:
@@ -433,7 +433,7 @@ async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "ad",
                     FSM_STATES[user_id]["title"],
                     FSM_STATES[user_id]["description"],
-                    FSM_STATES[user_id]["price"],
+                   FSM_STATES[user_id]["price"],
                     datetime.now().isoformat(),
                     "pending",
                     FSM_STATES[user_id].get("image_id"),
