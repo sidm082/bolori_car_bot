@@ -273,19 +273,15 @@ async def post_referral_start(update: Update, context: ContextTypes.DEFAULT_TYPE
 # مدیریت پیام‌های آگهی
 async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    with FSM_LOCK:
-        if user_id not in FSM_STATES or "state" not in FSM_STATES[user_id]:
-            logger.debug(f"No FSM state for user {user_id}, ignoring message")
-            return
-        state = FSM_STATES[user_id]["state"]
+    message = update.effective_message
+    state = FSM_STATES.get(user_id, {}).get("state")
+
     logger.debug(f"Handling message for user {user_id} in state {state}")
 
     try:
         if state == "post_ad_title":
-            message_text = update.message.text
-            with FSM_LOCK:
-                FSM_STATES[user_id]["title"] = message_text
-                FSM_STATES[user_id]["state"] = "post_ad_description"
+            FSM_STATES[user_id]["title"] = message.text
+            FSM_STATES[user_id]["state"] = "post_ad_description"
             await update.message.reply_text("لطفا * اطلاعات خودرو * شامل رنگ ، کارکرد ، وضعیت بدنه ، وضعیت فنی و غیره را وارد نمایید.")
         elif state == "post_ad_description":
             message_text = update.message.text
@@ -315,28 +311,97 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                 await update.message.reply_text(
                     "⚠️ شماره تلفن باید با 09 یا +98 شروع شود و 11 یا 12 رقم باشد (مثال: 09123456789 یا +989123456789). لطفاً دوباره وارد کنید:"
                 )
-        elif state == "post_ad_image":
-            if update.message.text and update.message.text == "/done":
-                with FSM_LOCK:
-                    if not FSM_STATES[user_id]["images"]:
-                        await update.message.reply_text("⚠️ هیچ عکسی ارسال نکرده‌اید. لطفاً حداقل یک عکس ارسال کنید.")
-                        return
-                    else:
-                        await save_ad(update, context)
-            elif update.message.photo:
-                with FSM_LOCK:
-                    if len(FSM_STATES[user_id]["images"]) >= 5:
-                        await update.message.reply_text("⚠️ شما حداکثر تعداد عکس (5 عدد) را ارسال کرده‌اید. برای ادامه /done را بزنید.")
-                        return
-                    photo = update.message.photo[-1].file_id
-                    FSM_STATES[user_id]["images"].append(photo)
-                    count = len(FSM_STATES[user_id]["images"])
-                await update.message.reply_text(f"عکس {count} از 5 ذخیره شد. برای ادامه عکس دیگری بفرستید یا /done را بزنید.")
+       elif state == "post_ad_image":
+            if message.text == "/done":
+                # بررسی اینکه حداقل یک عکس آپلود شده یا خیر
+                if not FSM_STATES[user_id].get("images"):
+                    await message.reply_text(
+                        "شما هیچ عکسی آپلود نکردید. لطفاً حداقل یک عکس ارسال کنید یا /cancel بزنید."
+                    )
+                    return
+
+                # ذخیره آگهی در دیتابیس
+                try:
+                    with get_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            """
+                            INSERT INTO ads (user_id, title, description, price, image_id, status)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                user_id,
+                                FSM_STATES[user_id]["title"],
+                                FSM_STATES[user_id]["description"],
+                                FSM_STATES[user_id]["price"],
+                                json.dumps(FSM_STATES[user_id]["images"]),  # ذخیره لیست image_id به‌صورت JSON
+                                "pending",
+                            ),
+                        )
+                        conn.commit()
+                        logger.debug(f"Ad saved for user {user_id} with {len(FSM_STATES[user_id]['images'])} images")
+                
+                    # اطلاع به کاربر
+                    await message.reply_text(
+                        "✅ آگهی شما با موفقیت ثبت شد و در انتظار تأیید ادمین است."
+                    )
+                    
+                    # اطلاع به ادمین‌ها
+                    ad_text = (
+                        f"🚗 {FSM_STATES[user_id]['title']}\n"
+                        f"📝 توضیحات: {FSM_STATES[user_id]['description']}\n"
+                        f" شماره تماس :  {FMS_states[user_id['phone']}\n"
+                        f"💰 قیمت: {FSM_STATES[user_id]['price']:,} تومان\n"
+                        f"👤 کاربر: @{update.effective_user.username or 'Unknown'}"
+                    )
+                    for admin_id in ADMIN_ID:
+                        try:
+                            if FSM_STATES[user_id]["images"]:
+                                media = [
+                                    InputMediaPhoto(
+                                        media=photo, caption=ad_text if i == 0 else None
+                                    )
+                                    for i, photo in enumerate(FSM_STATES[user_id]["images"])
+                                ]
+                                await context.bot.send_media_group(
+                                    chat_id=admin_id,
+                                    media=media
+                                )
+                            else:
+                                await context.bot.send_message(
+                                    chat_id=admin_id,
+                                    text=ad_text
+                                )
+                        except Exception as e:
+                            logger.error(f"Error notifying admin {admin_id}: {e}")
+
+                    # ریست حالت کاربر
+                    FSM_STATES[user_id] = {}
+                    return
+
+                except Exception as e:
+                    logger.error(f"Error saving ad for user {user_id}: {e}", exc_info=True)
+                    await message.reply_text("❌ خطایی در ثبت آگهی رخ داد. لطفاً دوباره امتحان کنید.")
+                    return
+
+            elif message.photo:
+                # اضافه کردن عکس به لیست
+                if len(FSM_STATES[user_id]["images"]) >= 5:
+                    await message.reply_text("شما حداکثر 5 عکس می‌توانید ارسال کنید. لطفاً /done بزنید.")
+                    return
+                photo = message.photo[-1].file_id
+                FSM_STATES[user_id]["images"].append(photo)
+                await message.reply_text(f"عکس {len(FSM_STATES[user_id]['images'])} دریافت شد. عکس بعدی یا /done")
+                return
             else:
-                await update.message.reply_text("لطفاً فقط عکس ارسال کنید یا برای اتمام /done را بزنید.")
+                await message.reply_text(
+                    "لطفاً فقط عکس ارسال کنید یا برای اتمام /done را بزنید."
+                )
+                return
+
     except Exception as e:
         logger.error(f"Error in post_ad_handle_message for user {user_id}: {e}", exc_info=True)
-        await update.effective_message.reply_text("❌ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید.")
+        await message.reply_text("❌ خطایی رخ داد. لطفاً دوباره امتحان کنید.")
 
 # ذخیره آگهی
 async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
