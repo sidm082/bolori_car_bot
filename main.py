@@ -311,7 +311,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                 await update.message.reply_text(
                     "⚠️ شماره تلفن باید با 09 یا +98 شروع شود و 11 یا 12 رقم باشد (مثال: 09123456789 یا +989123456789). لطفاً دوباره وارد کنید:"
                 )
-       elif state == "post_ad_image":
+        elif state == "post_ad_image":
             if message.text == "/done":
                 # بررسی اینکه حداقل یک عکس آپلود شده یا خیر
                 if not FSM_STATES[user_id].get("images"):
@@ -326,8 +326,8 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                         cursor = conn.cursor()
                         cursor.execute(
                             """
-                            INSERT INTO ads (user_id, title, description, price, image_id, status)
-                            VALUES (?, ?, ?, ?, ?, ?)
+                            INSERT INTO ads (user_id, title, description, price, image_id, phone, status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 user_id,
@@ -335,6 +335,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                                 FSM_STATES[user_id]["description"],
                                 FSM_STATES[user_id]["price"],
                                 json.dumps(FSM_STATES[user_id]["images"]),  # ذخیره لیست image_id به‌صورت JSON
+                                FSM_STATES[user_id]["phone"],
                                 "pending",
                             ),
                         )
@@ -350,7 +351,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                     ad_text = (
                         f"🚗 {FSM_STATES[user_id]['title']}\n"
                         f"📝 توضیحات: {FSM_STATES[user_id]['description']}\n"
-                        f" شماره تماس :  {FMS_states[user_id['phone']}\n"
+                        f"شماره تماس: {FSM_STATES[user_id]['phone']}\n"
                         f"💰 قیمت: {FSM_STATES[user_id]['price']:,} تومان\n"
                         f"👤 کاربر: @{update.effective_user.username or 'Unknown'}"
                     )
@@ -399,6 +400,9 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                 )
                 return
 
+    except Exception as e:
+        logger.error(f"Error in post_ad_handle_message for user {user_id}: {e}", exc_info=True)
+        await message.reply_text("❌ خطایی رخ داد. لطفاً دوباره امتحان کنید.")
     except Exception as e:
         logger.error(f"Error in post_ad_handle_message for user {user_id}: {e}", exc_info=True)
         await message.reply_text("❌ خطایی رخ داد. لطفاً دوباره امتحان کنید.")
