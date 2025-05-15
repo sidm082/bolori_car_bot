@@ -1,6 +1,6 @@
 import logging
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from telegram.error import TelegramError, Forbidden, BadRequest
 from aiohttp import web
 import queue
@@ -11,7 +11,6 @@ import time
 import os
 import json
 import re
-import InputMediaPhoto
 from threading import Lock
 
 # تنظیم لاگ‌گیری
