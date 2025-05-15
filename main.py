@@ -545,19 +545,19 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @bolori_car_bot"""
             )
             
-            if images:
-                await context.bot.send_photo(
+           if images:
+                # ایجاد لیست رسانه‌ها برای MediaGroup
+                media = [
+                    telegram.InputMediaPhoto(media=photo, caption=ad_text if i == 0 else None)
+                    for i, photo in enumerate(images)
+                ]
+                await context.bot.send_media_group(
                     chat_id=user_id,
-                    photo=images[0],
-                    caption=ad_text
+                    media=media
                 )
-                for photo in images[1:]:
-                    await context.bot.send_photo(chat_id=user_id, photo=photo)
-                    await asyncio.sleep(0.5)
             else:
                 await context.bot.send_message(chat_id=user_id, text=ad_text)
-            await asyncio.sleep(1)
-                
+            await asyncio.sleep(1)  # تأخیر بین آگهی‌ها برای جلوگیری از اسپم    
     except Exception as e:
         logger.error(f"Error showing ads: {str(e)}", exc_info=True)
         await update.effective_message.reply_text("❌ خطایی در نمایش آگهی‌ها رخ داد.")
