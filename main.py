@@ -735,7 +735,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"✅ {ad_type.capitalize()} شما تأیید شد و در کانال منتشر شد:\n"
                         f"عنوان: {ad['title']}\n"
                         f"توضیحات: {ad['description']}\n"
-                        f"شماره تماس: {ad['phone']}\n"
                         f"قیمت: {ad['price']:,} تومان\n\n"
                         f"📢 برای مشاهده آگهی‌های دیگر، از دکمه 'نمایش آگهی‌ها' استفاده کنید."
                     ),
@@ -745,7 +744,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🚗 آگهی جدید:\n"
                     f"عنوان: {ad['title']}\n"
                     f"توضیحات: {ad['description']}\n"
-                    f"شماره تماس: {ad['phone']}\n"
                     f"قیمت: {ad['price']:,} تومان\n"
                     f"📢 برای جزئیات بیشتر به ربات مراجعه کنید: @Bolori_car_bot\n"
                     f"""➖➖➖➖➖
