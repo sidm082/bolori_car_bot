@@ -11,6 +11,7 @@ import time
 import os
 import json
 import re
+import InputMediaPhoto
 from threading import Lock
 
 # تنظیم لاگ‌گیری
@@ -515,7 +516,6 @@ async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in save_referral: {str(e)}", exc_info=True)
         await update.message.reply_text("❌ خطایی در ثبت حواله رخ داد.")
-
 # نمایش آگهی‌ها
 async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -545,7 +545,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @bolori_car_bot"""
             )
             
-           if images:
+            if images:
                 # ایجاد لیست رسانه‌ها برای MediaGroup
                 media = [
                     telegram.InputMediaPhoto(media=photo, caption=ad_text if i == 0 else None)
@@ -557,7 +557,8 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             else:
                 await context.bot.send_message(chat_id=user_id, text=ad_text)
-            await asyncio.sleep(1)  # تأخیر بین آگهی‌ها برای جلوگیری از اسپم    
+            await asyncio.sleep(1)  # تأخیر بین آگهی‌ها برای جلوگیری از اسپم
+            
     except Exception as e:
         logger.error(f"Error showing ads: {str(e)}", exc_info=True)
         await update.effective_message.reply_text("❌ خطایی در نمایش آگهی‌ها رخ داد.")
