@@ -368,10 +368,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                         try:
                             if FSM_STATES[user_id]["images"]:
                                 media = [
-                                    InputMediaPhoto(
-                                        media=photo, caption=ad_text if i == 0 else None,
-                                        reply_markup=InlineKeyboardMarkup(buttons) if i == 0 else None
-                                    )
+                                    InputMediaPhoto(media=photo, caption=ad_text if i == 0 else None)
                                     for i, photo in enumerate(FSM_STATES[user_id]["images"])
                                 ]
                                 await context.bot.send_media_group(
@@ -379,13 +376,20 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                                     media=media
                                 )
                                 logger.debug(f"Sent media group to admin {admin_id} for ad {ad_id} with {len(media)} photos")
+                                # ارسال دکمه‌ها در پیام جداگانه
+                                await context.bot.send_message(
+                                    chat_id=admin_id,
+                                    text="لطفاً آگهی را تأیید یا رد کنید:",
+                                    reply_markup=InlineKeyboardMarkup(buttons)
+                                )
+                                logger.debug(f"Sent buttons to admin {admin_id} for ad {ad_id}")
                             else:
                                 await context.bot.send_message(
                                     chat_id=admin_id,
                                     text=ad_text,
                                     reply_markup=InlineKeyboardMarkup(buttons)
                                 )
-                                logger.debug(f"Sent text message to admin {admin_id} for ad {ad_id}")
+                                logger.debug(f"Sent text message with buttons to admin {admin_id} for ad {ad_id}")
                         except Exception as e:
                             logger.error(f"Error notifying admin {admin_id} for ad {ad_id}: {e}")
                             await context.bot.send_message(
@@ -422,7 +426,6 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
     except Exception as e:
         logger.error(f"Error in post_ad_handle_message for user {user_id}: {e}", exc_info=True)
         await message.reply_text("❌ خطایی رخ داد. لطفاً دوباره امتحان کنید.")
-
 # مدیریت پیام‌های حواله
 async def post_referral_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
