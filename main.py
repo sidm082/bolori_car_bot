@@ -547,7 +547,6 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ad_text = (
                 f"🚗 {ad['title']}\n"
                 f"📝 توضیحات: {ad['description']}\n"
-                f"شماره تماس: {ad['phone']}\n"
                 f"💰 قیمت: {ad['price']:,} تومان\n"
                 f"""➖➖➖➖➖
 ☑️ اتوگالــری بلـــوری
@@ -569,6 +568,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         chat_id=user_id,
                         media=media
                     )
+                    logger.debug(f"Sent media group to user {user_id} for ad {ad['id']} with {len(media)} photos")
                 except Exception as e:
                     logger.error(f"Error sending media group for ad {ad['id']}: {e}")
                     await context.bot.send_message(
@@ -577,7 +577,8 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
             else:
                 await context.bot.send_message(chat_id=user_id, text=ad_text)
-            await asyncio.sleep(1)  # تأخیر بین آگهی‌ها برای جلوگیری از اسپم
+                logger.debug(f"Sent text message to user {user_id} for ad {ad['id']}")
+            await asyncio.sleep(1.5)  # تأخیر بین آگهی‌ها برای جلوگیری از ریت‌لیمیت
             
     except Exception as e:
         logger.error(f"Error showing ads: {str(e)}", exc_info=True)
