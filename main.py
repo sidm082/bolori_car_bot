@@ -326,21 +326,23 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                         cursor = conn.cursor()
                         cursor.execute(
                             """
-                            INSERT INTO ads (user_id, title, description, price, image_id, phone, status)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            INSERT INTO ads (user_id, type, title, description, price, image_id, phone, status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 user_id,
+                                "ad",
                                 FSM_STATES[user_id]["title"],
                                 FSM_STATES[user_id]["description"],
                                 FSM_STATES[user_id]["price"],
-                                json.dumps(FSM_STATES[user_id]["images"]),  # ذخیره لیست image_id به‌صورت JSON
+                                json.dumps(FSM_STATES[user_id]["images"]),
                                 FSM_STATES[user_id]["phone"],
                                 "pending",
                             ),
                         )
+                        ad_id = cursor.lastrowid
                         conn.commit()
-                        logger.debug(f"Ad saved for user {user_id} with {len(FSM_STATES[user_id]['images'])} images")
+                        logger.debug(f"Ad saved for user {user_id} with id {ad_id} and {len(FSM_STATES[user_id]['images'])} images")
                 
                     # اطلاع به کاربر
                     await message.reply_text(
@@ -348,36 +350,45 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                     )
                     
                     # اطلاع به ادمین‌ها
+                    username = update.effective_user.username or "بدون نام کاربری"
                     ad_text = (
-                        f"🚗 {FSM_STATES[user_id]['title']}\n"
-                        f"📝 توضیحات: {FSM_STATES[user_id]['description']}\n"
+                        f"🚗 آگهی جدید از کاربر {user_id}:\n"
+                        f"نام کاربری: @{username}\n"
                         f"شماره تماس: {FSM_STATES[user_id]['phone']}\n"
+                        f"عنوان: {FSM_STATES[user_id]['title']}\n"
+                        f"توضیحات: {FSM_STATES[user_id]['description']}\n"
                         f"💰 قیمت: {FSM_STATES[user_id]['price']:,} تومان\n"
-                        f"👤 کاربر: @{update.effective_user.username or 'Unknown'}"
+                        f"تعداد عکس‌ها: {len(FSM_STATES[user_id]['images'])}"
                     )
+                    buttons = [
+                        [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_ad_{ad_id}")],
+                        [InlineKeyboardButton("❌ رد", callback_data=f"reject_ad_{ad_id}")]
+                    ]
                     for admin_id in ADMIN_ID:
                         try:
                             if FSM_STATES[user_id]["images"]:
-                                media = [
-                                    InputMediaPhoto(
-                                        media=photo, caption=ad_text if i == 0 else None
-                                    )
-                                    for i, photo in enumerate(FSM_STATES[user_id]["images"])
-                                ]
-                                await context.bot.send_media_group(
+                                await context.bot.send_photo(
                                     chat_id=admin_id,
-                                    media=media
+                                    photo=FSM_STATES[user_id]["images"][0],
+                                    caption=ad_text,
+                                    reply_markup=InlineKeyboardMarkup(buttons)
                                 )
+                                for photo in FSM_STATES[user_id]["images"][1:]:
+                                    await context.bot.send_photo(chat_id=admin_id, photo=photo)
+                                    await asyncio.sleep(0.5)
                             else:
                                 await context.bot.send_message(
                                     chat_id=admin_id,
-                                    text=ad_text
+                                    text=ad_text,
+                                    reply_markup=InlineKeyboardMarkup(buttons)
                                 )
+                            logger.debug(f"Sent ad notification to admin {admin_id} for ad {ad_id}")
                         except Exception as e:
-                            logger.error(f"Error notifying admin {admin_id}: {e}")
+                            logger.error(f"Error notifying admin {admin_id} for ad {ad_id}: {e}")
 
                     # ریست حالت کاربر
-                    FSM_STATES[user_id] = {}
+                    with FSM_LOCK:
+                        FSM_STATES[user_id] = {}
                     return
 
                 except Exception as e:
@@ -403,81 +414,6 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
     except Exception as e:
         logger.error(f"Error in post_ad_handle_message for user {user_id}: {e}", exc_info=True)
         await message.reply_text("❌ خطایی رخ داد. لطفاً دوباره امتحان کنید.")
-    except Exception as e:
-        logger.error(f"Error in post_ad_handle_message for user {user_id}: {e}", exc_info=True)
-        await message.reply_text("❌ خطایی رخ داد. لطفاً دوباره امتحان کنید.")
-
-# ذخیره آگهی
-async def save_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    logger.debug(f"Saving ad for user {user_id}")
-    try:
-        with get_db_connection() as conn:
-            with FSM_LOCK:
-                images_json = json.dumps(FSM_STATES[user_id].get("images", []))
-            cursor = conn.execute(
-                '''INSERT INTO ads (user_id, type, title, description, price, created_at, status, image_id, phone)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (
-                    user_id,
-                    "ad",
-                    FSM_STATES[user_id]["title"],
-                    FSM_STATES[user_id]["description"],
-                    FSM_STATES[user_id]["price"],
-                    datetime.now().isoformat(),
-                    "pending",
-                    images_json,
-                    FSM_STATES[user_id]["phone"],
-                ),
-            )
-            ad_id = cursor.lastrowid
-            conn.commit()
-        
-        logger.debug(f"Ad saved successfully for user {user_id} with ad_id {ad_id}")
-        await update.message.reply_text("✅ آگهی شما با موفقیت ثبت شد و پس از بررسی، در کانال منتشر خواهد شد.")
-        
-        username = update.effective_user.username or "بدون نام کاربری"
-        with FSM_LOCK:
-            images = FSM_STATES[user_id].get("images", [])
-        
-        for admin_id in ADMIN_ID:
-            buttons = [
-                [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_ad_{ad_id}")],
-                [InlineKeyboardButton("❌ رد", callback_data=f"reject_ad_{ad_id}")],
-            ]
-            ad_text = (
-                f"آگهی جدید از کاربر {user_id}:\n"
-                f"نام کاربری: @{username}\n"
-                f"شماره تلفن: {FSM_STATES[user_id]['phone']}\n"
-                f"عنوان: {FSM_STATES[user_id]['title']}\n"
-                f"توضیحات: {FSM_STATES[user_id]['description']}\n"
-                f"قیمت: {FSM_STATES[user_id]['price']:,} تومان\n"
-                f"تعداد عکس‌ها: {len(images)}"
-            )
-            
-            if images:
-                await context.bot.send_photo(
-                    chat_id=admin_id,
-                    photo=images[0],
-                    caption=ad_text,
-                    reply_markup=InlineKeyboardMarkup(buttons),
-                )
-                for photo in images[1:]:
-                    await context.bot.send_photo(chat_id=admin_id, photo=photo)
-                    await asyncio.sleep(0.5)
-            else:
-                await context.bot.send_message(
-                    chat_id=admin_id,
-                    text=ad_text,
-                    reply_markup=InlineKeyboardMarkup(buttons),
-                )
-            await asyncio.sleep(1)
-        
-        with FSM_LOCK:
-            del FSM_STATES[user_id]
-    except Exception as e:
-        logger.error(f"Error in save_ad: {str(e)}", exc_info=True)
-        await update.message.reply_text("❌ خطایی در ثبت آگهی رخ داد.")
 
 # مدیریت پیام‌های حواله
 async def post_referral_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -511,7 +447,7 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
                 price = int(message_text)
                 with FSM_LOCK:
                     FSM_STATES[user_id]["price"] = price
-                    FSM_STATES[user_id]["state"] = "post_referral_phone"
+                    FSM_STATES[user_id]["state"]:"post_referral_phone"
                 await update.message.reply_text(
                     "لطفاً شماره تلفن خود را وارد کنید (با شروع 09 یا +98، مثال: 09123456789 یا +989123456789):"
                 )
@@ -570,7 +506,7 @@ async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"شماره تلفن: {FSM_STATES[user_id]['phone']}\n"
                 f"عنوان: {FSM_STATES[user_id]['title']}\n"
                 f"توضیحات: {FSM_STATES[user_id]['description']}\n"
-                f"قیمت: {FSM_STATES[user_id]['price']} تومان"
+                f"قیمت: {FSM_STATES[user_id]['price']:,} تومان"
             )
             await context.bot.send_message(
                 chat_id=admin_id,
@@ -584,6 +520,7 @@ async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in save_referral: {str(e)}", exc_info=True)
         await update.message.reply_text("❌ خطایی در ثبت حواله رخ داد.")
+
 # نمایش آگهی‌ها
 async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -602,6 +539,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ad_text = (
                 f"🚗 {ad['title']}\n"
                 f"📝 توضیحات: {ad['description']}\n"
+                f"شماره تماس: {ad['phone']}\n"
                 f"💰 قیمت: {ad['price']:,} تومان\n"
                 f"""➖➖➖➖➖
 ☑️ اتوگالــری بلـــوری
@@ -614,15 +552,21 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             
             if images:
-                # ایجاد لیست رسانه‌ها برای MediaGroup
-                media = [
-                    telegram.InputMediaPhoto(media=photo, caption=ad_text if i == 0 else None)
-                    for i, photo in enumerate(images)
-                ]
-                await context.bot.send_media_group(
-                    chat_id=user_id,
-                    media=media
-                )
+                try:
+                    media = [
+                        InputMediaPhoto(media=photo, caption=ad_text if i == 0 else None)
+                        for i, photo in enumerate(images)
+                    ]
+                    await context.bot.send_media_group(
+                        chat_id=user_id,
+                        media=media
+                    )
+                except Exception as e:
+                    logger.error(f"Error sending media group for ad {ad['id']}: {e}")
+                    await context.bot.send_message(
+                        chat_id=user_id,
+                        text=f"خطا در نمایش عکس‌های آگهی: {ad_text}"
+                    )
             else:
                 await context.bot.send_message(chat_id=user_id, text=ad_text)
             await asyncio.sleep(1)  # تأخیر بین آگهی‌ها برای جلوگیری از اسپم
@@ -665,7 +609,8 @@ async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ad_text = (
                 f"📋 {ads['type'].capitalize()}: {ads['title']}\n"
                 f"توضیحات: {ads['description']}\n"
-                f"قیمت: {ads['price']} تومان\n"
+                f"شماره تماس: {ads['phone']}\n"
+                f"قیمت: {ads['price']:,} تومان\n"
                 f"کاربر: {ads['user_id']}"
             )
             buttons = [
@@ -692,7 +637,7 @@ async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Error in review_ads: {str(e)}", exc_info=True)
             await update.effective_message.reply_text("❌ خطایی در بررسی آگهی‌ها رخ داد.")
 
-# دیسپچر پیام‌ها (اصلاح‌شده برای جلوگیری از AttributeError)
+# دیسپچر پیام‌ها
 async def message_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(f"Message dispatcher for user {user_id}: {update.message.text if update.message and update.message.text else 'Non-text message'}")
@@ -777,6 +722,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"✅ {ad_type.capitalize()} شما تأیید شد و در کانال منتشر شد:\n"
                         f"عنوان: {ad['title']}\n"
                         f"توضیحات: {ad['description']}\n"
+                        f"شماره تماس: {ad['phone']}\n"
                         f"قیمت: {ad['price']:,} تومان\n\n"
                         f"📢 برای مشاهده آگهی‌های دیگر، از دکمه 'نمایش آگهی‌ها' استفاده کنید."
                     ),
@@ -786,6 +732,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🚗 آگهی جدید:\n"
                     f"عنوان: {ad['title']}\n"
                     f"توضیحات: {ad['description']}\n"
+                    f"شماره تماس: {ad['phone']}\n"
                     f"قیمت: {ad['price']:,} تومان\n"
                     f"📢 برای جزئیات بیشتر به ربات مراجعه کنید: @Bolori_car_bot\n"
                     f"""➖➖➖➖➖
@@ -867,7 +814,6 @@ def get_application():
     application.add_handler(CommandHandler("cancel", cancel))
     application.add_handler(CommandHandler("admin", admin))
     application.add_handler(CommandHandler("stats", stats))
-    application.add_handler(CommandHandler("done", post_ad_handle_message))
     application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_handler(MessageHandler(
         filters.TEXT | filters.PHOTO | filters.COMMAND,
