@@ -367,24 +367,32 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                     for admin_id in ADMIN_ID:
                         try:
                             if FSM_STATES[user_id]["images"]:
-                                await context.bot.send_photo(
+                                media = [
+                                    InputMediaPhoto(
+                                        media=photo, caption=ad_text if i == 0 else None,
+                                        reply_markup=InlineKeyboardMarkup(buttons) if i == 0 else None
+                                    )
+                                    for i, photo in enumerate(FSM_STATES[user_id]["images"])
+                                ]
+                                await context.bot.send_media_group(
                                     chat_id=admin_id,
-                                    photo=FSM_STATES[user_id]["images"][0],
-                                    caption=ad_text,
-                                    reply_markup=InlineKeyboardMarkup(buttons)
+                                    media=media
                                 )
-                                for photo in FSM_STATES[user_id]["images"][1:]:
-                                    await context.bot.send_photo(chat_id=admin_id, photo=photo)
-                                    await asyncio.sleep(0.5)
+                                logger.debug(f"Sent media group to admin {admin_id} for ad {ad_id} with {len(media)} photos")
                             else:
                                 await context.bot.send_message(
                                     chat_id=admin_id,
                                     text=ad_text,
                                     reply_markup=InlineKeyboardMarkup(buttons)
                                 )
-                            logger.debug(f"Sent ad notification to admin {admin_id} for ad {ad_id}")
+                                logger.debug(f"Sent text message to admin {admin_id} for ad {ad_id}")
                         except Exception as e:
                             logger.error(f"Error notifying admin {admin_id} for ad {ad_id}: {e}")
+                            await context.bot.send_message(
+                                chat_id=admin_id,
+                                text=f"خطا در ارسال آگهی: {ad_text}",
+                                reply_markup=InlineKeyboardMarkup(buttons)
+                            )
 
                     # ریست حالت کاربر
                     with FSM_LOCK:
