@@ -550,7 +550,6 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ad_text = (
                 f"🚗 {ad['title']}\n"
                 f"📝 توضیحات: {ad['description']}\n"
-                f"شماره تماس: {ad['phone']}\n"
                 f"💰 قیمت: {ad['price']:,} تومان\n"
                 f"""➖➖➖➖➖
 ☑️ اتوگالــری بلـــوری
