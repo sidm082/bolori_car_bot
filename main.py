@@ -829,7 +829,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception as e:
             logger.error(f"Failed to send error message to user: {e}", exc_info=True)
-async def handle_page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):  # ➕ این تابع را اضافه کنید
+            
+async def handle_page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -840,9 +841,10 @@ async def handle_page_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.delete()
     except BadRequest as e:
         logger.warning(f"Couldn't delete message: {e}")
-    
-    await show_ads(update, context, page=page)
+    except Exception as e:
+        logger.error(f"Error deleting message: {e}")
 
+    await show_ads(update, context, page=page)
 # ساخت اپلیکیشن
 def get_application():
     application = Application.builder().token(BOT_TOKEN).build()
