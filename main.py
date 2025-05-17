@@ -555,23 +555,30 @@ async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ خطایی در ثبت حواله رخ داد.")
 
 # نمایش آگهی‌ها
-async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, page=0):
+async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, page=0, ad_type=None):
     user_id = update.effective_user.id
     try:
         with get_db_connection() as conn:
-            total_ads = conn.execute("SELECT COUNT(*) FROM ads WHERE status = 'approved'").fetchone()[0]
-            ads = conn.execute(
-                "SELECT * FROM ads WHERE status = 'approved' ORDER BY created_at DESC LIMIT 5 OFFSET ?",
-                (page * 5,)
-            ).fetchall()
+            if ad_type:
+                total_ads = conn.execute("SELECT COUNT(*) FROM ads WHERE status = 'approved' AND type = ?", (ad_type,)).fetchone()[0]
+                ads = conn.execute(
+                    "SELECT * FROM ads WHERE status = 'approved' AND type = ? ORDER BY created_at DESC LIMIT 5 OFFSET ?",
+                    (ad_type, page * 5)
+                ).fetchall()
+            else:
+                total_ads = conn.execute("SELECT COUNT(*) FROM ads WHERE status = 'approved'").fetchone()[0]
+                ads = conn.execute(
+                    "SELECT * FROM ads WHERE status = 'approved' ORDER BY created_at DESC LIMIT 5 OFFSET ?",
+                    (page * 5,)
+                ).fetchall()
 
         if not ads:
-            await update.effective_message.reply_text("📭 هیچ آگهی فعالی موجود نیست.")
+            await update.effective_message.reply_text("📭 هیچ آیتمی برای نمایش موجود نیست.")
             return
 
         current_pages[user_id] = page  # ذخیره صفحه فعلی کاربر
 
-        # ایجاد دکمه های صفحه بندی
+        # ایجاد دکمه‌های صفحه‌بندی
         keyboard = []
         if page > 0:
             keyboard.append(InlineKeyboardButton("⬅️ قبلی", callback_data=f"page_{page-1}"))
@@ -583,7 +590,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, page=0):
         for ad in ads:
             images = safe_json_loads(ad['image_id'])
             ad_text = (
-                f"🚗 {ad['title']}\n"
+                f"🚗 {translate_ad_type(ad['type'])}: {ad['title']}\n"
                 f"📝 توضیحات: {ad['description']}\n"
                 f"💰 قیمت: {ad['price']:,} تومان\n"
                 f"""➖➖➖➖➖
@@ -612,14 +619,13 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, page=0):
         if reply_markup:
             await context.bot.send_message(
                 chat_id=user_id,
-                text=f"صفحه {page+1} - تعداد آگهی‌ها: {total_ads}",
+                text=f"صفحه {page+1} - تعداد آیتم‌ها: {total_ads}",
                 reply_markup=reply_markup
             )
 
     except Exception as e:
         logger.error(f"Error showing ads: {str(e)}")
-        await update.effective_message.reply_text("❌ خطایی در نمایش آگهی‌ها رخ داد.")
-
+        await update.effective_message.reply_text("❌ خطایی در نمایش آیتم‌ها رخ داد.")
 # پنل ادمین
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
