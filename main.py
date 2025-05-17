@@ -73,9 +73,9 @@ def init_db():
         conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_approved 
                   ON ads (status, created_at DESC)''')
         conn.commit()
-           conn.execute('''CREATE INDEX IF NOT EXISTS idx_users_id 
+        conn.execute('''CREATE INDEX IF NOT EXISTS idx_users_id 
                   ON users (user_id)''')
-    conn.commit()
+        conn.commit()
         logger.debug("Database initialized successfully.")
 
 # بارگذاری ادمین‌ها
@@ -156,14 +156,31 @@ async def process_update_queue():
         except Exception as e:
             logger.error(f"Error processing queued update: {e}", exc_info=True)
             await asyncio.sleep(1)
-
-# بررسی عضویت (غیرفعال برای تست)
+            
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(f"Checking membership for user {user_id} in channel {CHANNEL_ID}")
-    logger.debug("Skipping membership check for testing")
-    return True
-
+    
+    try:
+        # بررسی وضعیت عضویت کاربر در کانال
+        chat_member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+        
+        # بررسی اینکه کاربر عضو کانال است یا خیر
+        if chat_member.status in ['member', 'administrator', 'creator']:
+            logger.debug(f"User {user_id} is a member of channel {CHANNEL_ID}")
+            return True
+        else:
+            logger.debug(f"User {user_id} is not a member of channel {CHANNEL_ID}")
+            return False
+            
+    except TelegramError as e:
+        logger.error(f"Error checking membership for user {user_id}: {e}", exc_info=True)
+        if isinstance(e, Forbidden):
+            logger.warning(f"Bot does not have permission to check membership in {CHANNEL_ID}")
+        await update.effective_message.reply_text(
+            "❌ خطایی در بررسی عضویت رخ داد. لطفاً مطمئن شوید که در کانال عضو هستید و دوباره تلاش کنید."
+        )
+        return False
 # دستور start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"Start command received from user {update.effective_user.id}")
