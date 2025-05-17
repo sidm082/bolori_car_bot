@@ -48,7 +48,7 @@ update_queue = queue.Queue()
 app = web.Application()
 APPLICATION = None
 ADMIN_ID = [5677216420]
-
+current_pages = {}
 # اتصال به دیتابیس
 def get_db_connection():
     conn = sqlite3.connect('database.db')
@@ -533,18 +533,31 @@ async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ خطایی در ثبت حواله رخ داد.")
 
 # نمایش آگهی‌ها
-async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, page=0):
     user_id = update.effective_user.id
     try:
         with get_db_connection() as conn:
+            total_ads = conn.execute("SELECT COUNT(*) FROM ads WHERE status = 'approved'").fetchone()[0]
             ads = conn.execute(
-                "SELECT * FROM ads WHERE status = 'approved' ORDER BY created_at DESC LIMIT 5"
+                "SELECT * FROM ads WHERE status = 'approved' ORDER BY created_at DESC LIMIT 5 OFFSET ?",
+                (page * 5,)
             ).fetchall()
-        
+
         if not ads:
             await update.effective_message.reply_text("📭 هیچ آگهی فعالی موجود نیست.")
             return
-            
+
+        current_pages[user_id] = page  # ذخیره صفحه فعلی کاربر
+
+        # ایجاد دکمه های صفحه بندی
+        keyboard = []
+        if page > 0:
+            keyboard.append(InlineKeyboardButton("⬅️ قبلی", callback_data=f"page_{page-1}"))
+        if (page + 1) * 5 < total_ads:
+            keyboard.append(InlineKeyboardButton("➡️ بعدی", callback_data=f"page_{page+1}"))
+        
+        reply_markup = InlineKeyboardMarkup([keyboard]) if keyboard else None
+
         for ad in ads:
             images = safe_json_loads(ad['image_id'])
             ad_text = (
@@ -560,31 +573,29 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
 جهت ثبت آگهی تان به ربات زیر مراجعه کنید.
 @bolori_car_bot"""
             )
-            
+
             if images:
                 try:
-                    media = [
-                        InputMediaPhoto(media=photo, caption=ad_text if i == 0 else None)
-                        for i, photo in enumerate(images)
-                    ]
-                    await context.bot.send_media_group(
-                        chat_id=user_id,
-                        media=media
-                    )
-                    logger.debug(f"Sent media group to user {user_id} for ad {ad['id']} with {len(media)} photos")
+                    media = [InputMediaPhoto(media=photo, caption=ad_text if i == 0 else None) 
+                            for i, photo in enumerate(images)]
+                    await context.bot.send_media_group(chat_id=user_id, media=media)
                 except Exception as e:
-                    logger.error(f"Error sending media group for ad {ad['id']}: {e}")
-                    await context.bot.send_message(
-                        chat_id=user_id,
-                        text=f"خطا در نمایش عکس‌های آگهی: {ad_text}"
-                    )
+                    logger.error(f"Error sending media: {e}")
+                    await context.bot.send_message(chat_id=user_id, text=ad_text)
             else:
                 await context.bot.send_message(chat_id=user_id, text=ad_text)
-                logger.debug(f"Sent text message to user {user_id} for ad {ad['id']}")
-            await asyncio.sleep(2)  # تأخیر بیشتر برای جلوگیری از ریت‌لیمیت
             
+            await asyncio.sleep(0.5)
+
+        if reply_markup:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=f"صفحه {page+1} - تعداد آگهی‌ها: {total_ads}",
+                reply_markup=reply_markup
+            )
+
     except Exception as e:
-        logger.error(f"Error showing ads: {str(e)}", exc_info=True)
+        logger.error(f"Error showing ads: {str(e)}")
         await update.effective_message.reply_text("❌ خطایی در نمایش آگهی‌ها رخ داد.")
 
 # پنل ادمین
