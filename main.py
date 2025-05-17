@@ -187,13 +187,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if await check_membership(update, context):
         buttons = [
-            [InlineKeyboardButton("➕ ثبت آگهی", callback_data="post_ad")],
-            [InlineKeyboardButton("📜 ثبت حواله", callback_data="post_referral")],
-            [InlineKeyboardButton("🗂️ نمایش آگهی‌ها", callback_data="show_ads")]
-        ]
+                [InlineKeyboardButton("➕ ثبت آگهی", callback_data="post_ad")],
+                [InlineKeyboardButton("📜 ثبت حواله", callback_data="post_referral")],
+                [InlineKeyboardButton("🗂️ نمایش آگهی‌ها", callback_data="show_ads_ad")],
+                [InlineKeyboardButton("📋 نمایش حواله‌ها", callback_data="show_ads_referral")]
+    ]
         if user.id in ADMIN_ID:
-            buttons.append([InlineKeyboardButton("👨‍💼 پنل ادمین", callback_data="admin_panel")])
-            buttons.append([InlineKeyboardButton("📊 آمار کاربران", callback_data="stats")])
+            buttons = [
+                [InlineKeyboardButton("📋 بررسی آگهی‌ها", callback_data="review_ads_ad")],
+                [InlineKeyboardButton("📋 بررسی حواله‌ها", callback_data="review_ads_referral")],
+                [InlineKeyboardButton("📊 آمار کاربران", callback_data="stats")]
+]
         welcome_text = (
             f"سلام {user.first_name} عزیز! 👋\n\n"
             "به ربات رسمی ثبت آگهی و حواله خودرو *اتوگالری بلوری* خوش آمدید. از طریق این ربات می‌توانید:\n"
@@ -778,8 +782,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await post_ad_start(update, context)
     elif callback_data == "post_referral":
         await post_referral_start(update, context)
-    elif callback_data == "show_ads":
-        await show_ads(update, context)
+    elif callback_data == "show_ads_ad":
+        await show_ads(update, context, ad_type="ad")
+    elif callback_data == "show_ads_referral":
+        await show_ads(update, context, ad_type="referral")
     elif callback_data == "admin_panel":
         await admin_panel(update, context)
     elif callback_data == "stats":
