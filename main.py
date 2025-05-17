@@ -70,6 +70,8 @@ def init_db():
         conn.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (5677216420,))
         conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_status
                       ON ads (status)''')
+        conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_approved 
+                  ON ads (status, created_at DESC)''')
         conn.commit()
         logger.debug("Database initialized successfully.")
 
@@ -836,6 +838,7 @@ def get_application():
     application.add_handler(CommandHandler("admin", admin))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CallbackQueryHandler(handle_callback))
+    application.add_handler(CallbackQueryHandler(handle_page_callback, pattern=r"^page_\d+$"))
     application.add_handler(MessageHandler(
         filters.TEXT | filters.PHOTO | filters.COMMAND,
         message_dispatcher
