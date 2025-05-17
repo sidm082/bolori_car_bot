@@ -790,8 +790,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await admin_panel(update, context)
     elif callback_data == "stats":
         await stats(update, context)
-    elif callback_data == "review_ads":
-        await review_ads(update, context)
+    elif callback_data == "review_ads_ad":
+    await review_ads(update, context, ad_type="ad")
+elif callback_data == "review_ads_referral":
+    await review_ads(update, context, ad_type="referral")
     elif callback_data.startswith("approve_"):
         if user_id in ADMIN_ID:
             try:
