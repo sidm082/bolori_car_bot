@@ -102,6 +102,46 @@ def safe_json_loads(data):
         logger.warning(f"Invalid JSON in image_id: {data}")
         return [data] if data else []
 
+# تابع ارسال آگهی به تمام کاربران
+async def broadcast_ad(context: ContextTypes.DEFAULT_TYPE, ad):
+    logger.debug(f"Broadcasting ad {ad['id']} to all users")
+    try:
+        with get_db_connection() as conn:
+            users = conn.execute("SELECT user_id FROM users").fetchall()
+        
+        images = safe_json_loads(ad['image_id'])
+        ad_text = (
+            f"🚗 {translate_ad_type(ad['type'])} جدید:\n"
+            f"عنوان: {ad['title']}\n"
+            f"توضیحات: {ad['description']}\n"
+            f"قیمت: {ad['price']:,} تومان\n"
+            f"📢 برای جزئیات بیشتر به ربات مراجعه کنید: @Bolori_car_bot\n"
+            f"""➖➖➖➖➖
+☑️ اتوگالــری بلـــوری
+▫️خرید▫️فروش▫️کارشناسی
++989153632957
+➖➖➖➖
+@Bolori_Car
+جهت ثبت آگهی تان به ربات زیر مراجعه کنید.
+@bolori_car_bot"""
+        )
+        
+        for user in users:
+            try:
+                if images:
+                    media = [InputMediaPhoto(media=photo, caption=ad_text if i == 0 else None) 
+                             for i, photo in enumerate(images)]
+                    await context.bot.send_media_group(chat_id=user['user_id'], media=media)
+                else:
+                    await context.bot.send_message(chat_id=user['user_id'], text=ad_text)
+                await asyncio.sleep(0.1)  # تأخیر برای جلوگیری از محدودیت‌های تلگرام
+            except Exception as e:
+                logger.error(f"Error broadcasting ad to user {user['user_id']}: {e}")
+        
+        logger.debug(f"Ad {ad['id']} broadcasted to {len(users)} users")
+    except Exception as e:
+        logger.error(f"Error in broadcast_ad: {e}", exc_info=True)
+
 # مسیر Webhook
 async def webhook(request):
     logger.debug("Received webhook request")
@@ -455,6 +495,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
     except Exception as e:
         logger.error(f"Error in post_ad_handle_message for user {user_id}: {e}", exc_info=True)
         await message.reply_text("❌ خطایی رخ داد. لطفاً دوباره امتحان کنید.")
+
 # مدیریت پیام‌های حواله
 async def post_referral_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -481,13 +522,13 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
             with FSM_LOCK:
                 FSM_STATES[user_id]["description"] = message_text
                 FSM_STATES[user_id]["state"] = "post_referral_price"
-            await update.message.reply_text("لطفاً قیمت حواله را به تومان وارد کنید (فقط عدد):")
+            await update.message.reply_text("لطفآ قیمت حواله را به تومان وارد کنید (فقط عدد):")
         elif state == "post_referral_price":
             try:
                 price = int(message_text)
                 with FSM_LOCK:
                     FSM_STATES[user_id]["price"] = price
-                    FSM_STATES[user_id]["state"]:"post_referral_phone"
+                    FSM_STATES[user_id]["state"] = "post_referral_phone"
                 await update.message.reply_text(
                     "لطفاً شماره تلفن خود را وارد کنید (با شروع 09 یا +98، مثال: 09123456789 یا +989123456789):"
                 )
@@ -633,6 +674,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, page=0, a
     except Exception as e:
         logger.error(f"Error showing ads: {str(e)}")
         await update.effective_message.reply_text("❌ خطایی در نمایش آیتم‌ها رخ داد.")
+
 # پنل ادمین
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -767,7 +809,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ad_id = int(ad_id)
                 with get_db_connection() as conn:
                     ad = conn.execute(
-                        "SELECT user_id, title, description, price, image_id, phone FROM ads WHERE id = ?",
+                        "SELECT id, user_id, title, description, price, image_id, phone, type FROM ads WHERE id = ?",
                         (ad_id,),
                     ).fetchone()
                     if not ad:
@@ -798,7 +840,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 
                 channel_text = (
-                    f"🚗 آگهی جدید:\n"
+                    f"🚗 {translate_ad_type(ad_type)} جدید:\n"
                     f"عنوان: {ad['title']}\n"
                     f"توضیحات: {ad['description']}\n"
                     f"قیمت: {ad['price']:,} تومان\n"
@@ -825,7 +867,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await context.bot.send_message(chat_id=CHANNEL_ID, text=channel_text)
                 
-                # ارسال به تمام کاربران
+                # ارسال آگهی به تمام کاربران
                 asyncio.create_task(broadcast_ad(context, ad))
                 logger.debug(f"Ad {ad_id} published to channel {CHANNEL_ID}")
             
@@ -865,6 +907,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         logger.warning(f"Unknown callback data: {callback_data}")
         await query.message.reply_text("⚠️ گزینه ناشناخته.")
+
 # مدیریت خطاها
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Update {update} caused error: {context.error}", exc_info=context.error)
@@ -875,7 +918,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception as e:
             logger.error(f"Failed to send error message to user: {e}", exc_info=True)
-            
+
+# مدیریت صفحه‌بندی
 async def handle_page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -883,7 +927,7 @@ async def handle_page_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     page = int(query.data.split("_")[1])
     
     try:
-        # حذف پیام صفحه بندی قبلی
+        # حذف پیام صفحه‌بندی قبلی
         await query.message.delete()
     except BadRequest as e:
         logger.warning(f"Couldn't delete message: {e}")
@@ -891,6 +935,7 @@ async def handle_page_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.error(f"Error deleting message: {e}")
 
     await show_ads(update, context, page=page)
+
 # ساخت اپلیکیشن
 def get_application():
     application = Application.builder().token(BOT_TOKEN).build()
@@ -924,8 +969,6 @@ async def main():
             secret_token=WEBHOOK_SECRET if WEBHOOK_SECRET else None
         )
         logger.debug("Webhook set successfully.")
-        await APPLICATION.start()
-        logger.debug("Application started.")
         asyncio.create_task(process_update_queue())
         logger.debug("Process update queue task created.")
     except Exception as e:
