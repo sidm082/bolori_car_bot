@@ -760,6 +760,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     logger.debug(f"Callback received from user {user_id}: {callback_data}")
 
+    def translate_ad_type(ad_type):
+        return "آگهی" if ad_type == "ad" else "حواله"
+
     if callback_data == "check_membership":
         if await check_membership(update, context):
             await start(update, context)
@@ -806,7 +809,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(
                     chat_id=ad['user_id'],
                     text=(
-                        f"✅ {ad_type.capitalize()} شما تأیید شد و در کانال منتشر شد:\n"
+                        f"✅ {translate_ad_type(ad_type)} شما تأیید شد و در کانال منتشر شد:\n"
                         f"عنوان: {ad['title']}\n"
                         f"توضیحات: {ad['description']}\n"
                         f"قیمت: {ad['price']:,} تومان\n\n"
@@ -841,10 +844,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await asyncio.sleep(0.5)
                 else:
                     await context.bot.send_message(chat_id=CHANNEL_ID, text=channel_text)
-                     # ➕ ارسال به تمام کاربران
-            asyncio.create_task(broadcast_ad(context, ad))
-                logger.debug(f"Ad {ad_id} published to channel {CHANNEL_ID}")
                 
+                # ارسال به تمام کاربران
+                asyncio.create_task(broadcast_ad(context, ad))
+                logger.debug(f"Ad {ad_id} published to channel {CHANNEL_ID}")
+            
             except Exception as e:
                 logger.error(f"Error in approve for ad {ad_id}: {e}", exc_info=True)
                 await query.message.reply_text("❌ خطایی در تأیید آگهی رخ داد.")
@@ -868,10 +872,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         (ad_id,),
                     )
                     conn.commit()
-                await query.message.reply_text(f"❌ {ad_type.capitalize()} رد شد.")
+                await query.message.reply_text(f"❌ {translate_ad_type(ad_type)} رد شد.")
                 await context.bot.send_message(
                     chat_id=ad['user_id'],
-                    text=f"❌ {ad_type.capitalize()} شما رد شد. لطفاً با ادمین تماس بگیرید."
+                    text=f"❌ {translate_ad_type(ad_type)} شما رد شد. لطفاً با ادمین تماس بگیرید."
                 )
             except Exception as e:
                 logger.error(f"Error in reject for ad {ad_id}: {e}", exc_info=True)
@@ -881,7 +885,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         logger.warning(f"Unknown callback data: {callback_data}")
         await query.message.reply_text("⚠️ گزینه ناشناخته.")
-
 # مدیریت خطاها
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Update {update} caused error: {context.error}", exc_info=context.error)
