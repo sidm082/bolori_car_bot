@@ -73,6 +73,9 @@ def init_db():
         conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_approved 
                   ON ads (status, created_at DESC)''')
         conn.commit()
+           conn.execute('''CREATE INDEX IF NOT EXISTS idx_users_id 
+                  ON users (user_id)''')
+    conn.commit()
         logger.debug("Database initialized successfully.")
 
 # بارگذاری ادمین‌ها
@@ -821,7 +824,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await asyncio.sleep(0.5)
                 else:
                     await context.bot.send_message(chat_id=CHANNEL_ID, text=channel_text)
-                
+                     # ➕ ارسال به تمام کاربران
+            asyncio.create_task(broadcast_ad(context, ad))
                 logger.debug(f"Ad {ad_id} published to channel {CHANNEL_ID}")
                 
             except Exception as e:
