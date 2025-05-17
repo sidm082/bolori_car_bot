@@ -648,21 +648,29 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("⚠️ شما دسترسی ادمین ندارید.")
 
 # بررسی آگهی‌ها
-async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, ad_type=None):
     user_id = update.effective_user.id
-    logger.debug(f"Review ads requested by user {user_id}")
-    if user_id in ADMIN_ID:
-        try:
-            with get_db_connection() as conn:
+    logger.debug(f"Review ads requested by user {user_id} for type {ad_type}")
+    if user_id not in ADMIN_ID:
+        await update.effective_message.reply_text("⚠️ شما دسترسی ادمین ندارید.")
+        return
+    try:
+        with get_db_connection() as conn:
+            if ad_type:
+                ads = conn.execute(
+                    "SELECT * FROM ads WHERE status = 'pending' AND type = ? ORDER BY created_at ASC LIMIT 1",
+                    (ad_type,)
+                ).fetchone()
+            else:
                 ads = conn.execute(
                     "SELECT * FROM ads WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1"
                 ).fetchone()
             if not ads:
-                await update.effective_message.reply_text("📪 هیچ آگهی در انتظار تأییدی یافت نشد.")
+                await update.effective_message.reply_text(f"📪 هیچ {translate_ad_type(ad_type) if ad_type else 'آیتمی'} در انتظار تأییدی یافت نشد.")
                 return
             images = safe_json_loads(ads['image_id'])
             ad_text = (
-                f"📋 {ads['type'].capitalize()}: {ads['title']}\n"
+                f"📋 {translate_ad_type(ads['type'])}: {ads['title']}\n"
                 f"توضیحات: {ads['description']}\n"
                 f"شماره تماس: {ads['phone']}\n"
                 f"قیمت: {ads['price']:,} تومان\n"
@@ -688,51 +696,9 @@ async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text=ad_text,
                     reply_markup=InlineKeyboardMarkup(buttons)
                 )
-        except Exception as e:
-            logger.error(f"Error in review_ads: {str(e)}", exc_info=True)
-            await update.effective_message.reply_text("❌ خطایی در بررسی آگهی‌ها رخ داد.")
-async def broadcast_ad(context: ContextTypes.DEFAULT_TYPE, ad: dict):
-    try:
-        with get_db_connection() as conn:
-            users = conn.execute("SELECT user_id FROM users").fetchall()
-
-        images = safe_json_loads(ad['image_id'])
-        ad_text = (
-            f"📢 آگهی جدید:\n"
-            f"🚗 {ad['title']}\n"
-            f"📝 {ad['description']}\n"
-            f"💰 قیمت: {ad['price']:,} تومان\n"
-            f"""➖➖➖➖➖
-☑️ اتوگالــری بلـــوری
-▫️خرید▫️فروش▫️کارشناسی
-+989153632957
-➖➖➖➖
-@Bolori_Car
-جهت ثبت آگهی تان به ربات زیر مراجعه کنید.
-@bolori_car_bot"""
-        )
-
-        for user in users:
-            try:
-                if images:
-                    await context.bot.send_photo(
-                        chat_id=user['user_id'],
-                        photo=images[0],
-                        caption=ad_text
-                    )
-                else:
-                    await context.bot.send_message(
-                        chat_id=user['user_id'],
-                        text=ad_text
-                    )
-                await asyncio.sleep(0.3)
-            except Forbidden:
-                logger.warning(f"User {user['user_id']} blocked the bot")
-            except Exception as e:
-                logger.error(f"Error sending to user {user['user_id']}: {e}")
-
     except Exception as e:
-        logger.error(f"Error in broadcast_ad: {e}")
+        logger.error(f"Error in review_ads: {str(e)}", exc_info=True)
+        await update.effective_message.reply_text("❌ خطایی در بررسی آیتم‌ها رخ داد.")
 
 # دیسپچر پیام‌ها
 async def message_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE):
