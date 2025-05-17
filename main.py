@@ -661,6 +661,48 @@ async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Error in review_ads: {str(e)}", exc_info=True)
             await update.effective_message.reply_text("❌ خطایی در بررسی آگهی‌ها رخ داد.")
+async def broadcast_ad(context: ContextTypes.DEFAULT_TYPE, ad: dict):
+    try:
+        with get_db_connection() as conn:
+            users = conn.execute("SELECT user_id FROM users").fetchall()
+
+        images = safe_json_loads(ad['image_id'])
+        ad_text = (
+            f"📢 آگهی جدید:\n"
+            f"🚗 {ad['title']}\n"
+            f"📝 {ad['description']}\n"
+            f"💰 قیمت: {ad['price']:,} تومان\n"
+            f"""➖➖➖➖➖
+☑️ اتوگالــری بلـــوری
+▫️خرید▫️فروش▫️کارشناسی
++989153632957
+➖➖➖➖
+@Bolori_Car
+جهت ثبت آگهی تان به ربات زیر مراجعه کنید.
+@bolori_car_bot"""
+        )
+
+        for user in users:
+            try:
+                if images:
+                    await context.bot.send_photo(
+                        chat_id=user['user_id'],
+                        photo=images[0],
+                        caption=ad_text
+                    )
+                else:
+                    await context.bot.send_message(
+                        chat_id=user['user_id'],
+                        text=ad_text
+                    )
+                await asyncio.sleep(0.3)
+            except Forbidden:
+                logger.warning(f"User {user['user_id']} blocked the bot")
+            except Exception as e:
+                logger.error(f"Error sending to user {user['user_id']}: {e}")
+
+    except Exception as e:
+        logger.error(f"Error in broadcast_ad: {e}")
 
 # دیسپچر پیام‌ها
 async def message_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE):
