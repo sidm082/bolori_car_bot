@@ -27,6 +27,10 @@ logging.getLogger('telegram').setLevel(logging.DEBUG)
 logging.getLogger('httpcore').setLevel(logging.DEBUG)
 logging.getLogger('httpx').setLevel(logging.DEBUG)
 
+# تابع ترجمه نوع آگهی
+def translate_ad_type(ad_type):
+    return "آگهی" if ad_type == "ad" else "حواله"
+
 # دیکشنری و Lock برای FSM
 FSM_STATES = {}
 FSM_LOCK = Lock()
@@ -49,6 +53,7 @@ app = web.Application()
 APPLICATION = None
 ADMIN_ID = [5677216420]
 current_pages = {}
+
 # اتصال به دیتابیس
 def get_db_connection():
     conn = sqlite3.connect('database.db')
@@ -156,23 +161,19 @@ async def process_update_queue():
         except Exception as e:
             logger.error(f"Error processing queued update: {e}", exc_info=True)
             await asyncio.sleep(1)
-            
+
+# بررسی عضویت
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(f"Checking membership for user {user_id} in channel {CHANNEL_ID}")
-    
     try:
-        # بررسی وضعیت عضویت کاربر در کانال
         chat_member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        
-        # بررسی اینکه کاربر عضو کانال است یا خیر
         if chat_member.status in ['member', 'administrator', 'creator']:
             logger.debug(f"User {user_id} is a member of channel {CHANNEL_ID}")
             return True
         else:
             logger.debug(f"User {user_id} is not a member of channel {CHANNEL_ID}")
             return False
-            
     except TelegramError as e:
         logger.error(f"Error checking membership for user {user_id}: {e}", exc_info=True)
         if isinstance(e, Forbidden):
@@ -181,23 +182,24 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ خطایی در بررسی عضویت رخ داد. لطفاً مطمئن شوید که در کانال عضو هستید و دوباره تلاش کنید."
         )
         return False
+
 # دستور start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"Start command received from user {update.effective_user.id}")
     user = update.effective_user
     if await check_membership(update, context):
         buttons = [
-                [InlineKeyboardButton("➕ ثبت آگهی", callback_data="post_ad")],
-                [InlineKeyboardButton("📜 ثبت حواله", callback_data="post_referral")],
-                [InlineKeyboardButton("🗂️ نمایش آگهی‌ها", callback_data="show_ads_ad")],
-                [InlineKeyboardButton("📋 نمایش حواله‌ها", callback_data="show_ads_referral")]
-    ]
+            [InlineKeyboardButton("➕ ثبت آگهی", callback_data="post_ad")],
+            [InlineKeyboardButton("📜 ثبت حواله", callback_data="post_referral")],
+            [InlineKeyboardButton("🗂️ نمایش آگهی‌ها", callback_data="show_ads_ad")],
+            [InlineKeyboardButton("📋 نمایش حواله‌ها", callback_data="show_ads_referral")]
+        ]
         if user.id in ADMIN_ID:
-            buttons = [
+            buttons.extend([
                 [InlineKeyboardButton("📋 بررسی آگهی‌ها", callback_data="review_ads_ad")],
                 [InlineKeyboardButton("📋 بررسی حواله‌ها", callback_data="review_ads_referral")],
                 [InlineKeyboardButton("📊 آمار کاربران", callback_data="stats")]
-]
+            ])
         welcome_text = (
             f"سلام {user.first_name} عزیز! 👋\n\n"
             "به ربات رسمی ثبت آگهی و حواله خودرو *اتوگالری بلوری* خوش آمدید. از طریق این ربات می‌توانید:\n"
@@ -247,7 +249,8 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"Admin command received from user {user_id}")
     if user_id in ADMIN_ID:
         buttons = [
-            [InlineKeyboardButton("📋 بررسی آگهی‌ها", callback_data="review_ads")],
+            [InlineKeyboardButton("📋 بررسی آگهی‌ها", callback_data="review_ads_ad")],
+            [InlineKeyboardButton("📋 بررسی حواله‌ها", callback_data="review_ads_referral")],
             [InlineKeyboardButton("📊 آمار کاربران", callback_data="stats")]
         ]
         await update.effective_message.reply_text(
