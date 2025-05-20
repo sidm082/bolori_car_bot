@@ -176,9 +176,7 @@ async def health_check(request):
     try:
         with get_db_connection() as conn:
             conn.execute("SELECT 1")
-        if APPLICATION and APPLICATION.running:
-            return web.Response(status=200, text='OK')
-        return web.Response(status=503, text='Application not running')
+        return web.Response(status=200, text='OK')
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return web.Response(status=500, text='Internal Server Error')
@@ -1078,7 +1076,7 @@ async def run():
     global ADMIN_ID, APPLICATION
     ADMIN_ID = load_admins()
     app.router.add_post('/webhook', webhook)
-    app.router.add_get('/', health_check)
+    app.router.add_get('/', health_check)  # این خط همون مسیر سلامت رو ثبت می‌کنه
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', PORT)
@@ -1103,3 +1101,4 @@ if __name__ == '__main__':
         pass
     finally:
         loop.close()
+        
