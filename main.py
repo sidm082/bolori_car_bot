@@ -387,10 +387,14 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                 with FSM_LOCK:
                     FSM_STATES[user_id]["price"] = price
                     FSM_STATES[user_id]["state"] = "post_ad_phone"
-                keyboard = ReplyKeyboardMarkup(
-                    [[KeyboardButton("📞 ارسال شماره تماس", request_contact=True)]],
-                    one_time_keyboard=True,
-                    resize_keyboard=True
+                    keyboard = ReplyKeyboardMarkup(
+                     [[KeyboardButton("📞 ارسال شماره تماس", request_contact=True)]],
+                     one_time_keyboard=True,
+                     resize_keyboard=True
+                    )
+                await update.message.reply_text(
+                "لطفاً برای ارسال شماره تماس خود، روی دکمه زیر کلیک کنید یا شماره خود را تایپ کنید (باید با 09 یا +98 یا 98 شروع شود):",
+                reply_markup=keyboard
                 )
                 await update.message.reply_text(
                     "لطفاً برای ارسال شماره تماس خود، روی دکمه زیر کلیک کنید:",
