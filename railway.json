@@ -1,5 +1,4 @@
-{
-  "deploy": {
-    "startCommand": "gunicorn main:app"
-  }
-}
+echo '{"deploy":{"startCommand":"gunicorn main:app"}}' > .railway.json
+git add .railway.json
+git commit -m "Force gunicorn start command"
+railway up
