@@ -13,8 +13,9 @@ import json
 import re
 from threading import Lock
 from dotenv import load_dotenv
+import time
 
-# بارگذاری متغیرهای محیطی از فایل .env (در صورت وجود)
+# بارگذاری متغیرهای محیطی
 load_dotenv()
 
 # تنظیم لاگ‌گیری
@@ -69,6 +70,7 @@ APPLICATION = None
 ADMIN_ID = [5677216420]
 current_pages = {}
 MAIN_INITIALIZED = False
+INIT_LOCK = Lock()
 
 # مسیر دیتابیس
 DATABASE_PATH = "/app/data/database.db"
@@ -76,7 +78,6 @@ DATABASE_PATH = "/app/data/database.db"
 # اتصال به دیتابیس
 def get_db_connection():
     try:
-        # اطمینان از وجود دایرکتوری
         os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
         conn = sqlite3.connect(DATABASE_PATH, timeout=10)
         conn.row_factory = sqlite3.Row
@@ -809,7 +810,9 @@ async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, ad_type
                     await asyncio.sleep(0.5)
             else:
                 await context.bot.send_message(
-                    chat_id=user_id,
+                    ch
+```python
+at_id=user_id,
                     text=ad_text,
                     reply_markup=InlineKeyboardMarkup(buttons)
                 )
@@ -1096,50 +1099,49 @@ def get_application():
 
 # تابع مقداردهی اولیه
 async def init_main():
-    global MAIN_INITIALIZED
-    if not MAIN_INITIALIZED:
-        logger.debug("Initializing main function...")
-        try:
-            logger.debug("Attempting to initialize database...")
-            init_db()
-            logger.debug("Database initialized successfully.")
-            global ADMIN_ID, APPLICATION
-            logger.debug("Loading admin IDs...")
-            ADMIN_ID = load_admins()
-            logger.debug(f"Loaded {len(ADMIN_ID)} admin IDs")
-            logger.debug("Building application...")
-            APPLICATION = get_application()
-            logger.debug("Application built successfully.")
-            logger.debug("Initializing application...")
-            await APPLICATION.initialize()
-            logger.debug("Application initialized.")
-            logger.debug("Deleting existing webhook...")
+    global MAIN_INITIALIZED, APPLICATION, ADMIN_ID
+    with INIT_LOCK:
+        if not MAIN_INITIALIZED:
+            logger.debug("Initializing main function...")
             try:
-                await APPLICATION.bot.delete_webhook(drop_pending_updates=True)
-                logger.debug("Webhook deleted successfully.")
+                logger.debug("Attempting to initialize database...")
+                init_db()
+                logger.debug("Database initialized successfully.")
+                logger.debug("Loading admin IDs...")
+                ADMIN_ID = load_admins()
+                logger.debug(f"Loaded {len(ADMIN_ID)} admin IDs")
+                logger.debug("Building application...")
+                APPLICATION = get_application()
+                logger.debug("Application built successfully.")
+                logger.debug("Initializing application...")
+                await APPLICATION.initialize()
+                logger.debug("Application initialized.")
+                logger.debug("Deleting existing webhook...")
+                try:
+                    await APPLICATION.bot.delete_webhook(drop_pending_updates=True)
+                    logger.debug("Webhook deleted successfully.")
+                except Exception as e:
+                    logger.error(f"Failed to delete webhook: {str(e)}", exc_info=True)
+                    raise
+                logger.debug(f"Setting webhook to {WEBHOOK_URL}...")
+                try:
+                    await APPLICATION.bot.set_webhook(
+                        url=WEBHOOK_URL,
+                        secret_token=WEBHOOK_SECRET if WEBHOOK_SECRET else None
+                    )
+                    logger.debug("Webhook set successfully.")
+                except Exception as e:
+                    logger.error(f"Failed to set webhook: {str(e)}", exc_info=True)
+                    raise
+                logger.debug("Creating process update queue task...")
+                asyncio.create_task(process_update_queue())
+                logger.debug("Process update queue task created.")
+                MAIN_INITIALIZED = True
             except Exception as e:
-                logger.error(f"Failed to delete webhook: {str(e)}", exc_info=True)
+                logger.error(f"Error in init_main: {str(e)}", exc_info=True)
                 raise
-            logger.debug(f"Setting webhook to {WEBHOOK_URL}...")
-            try:
-                await APPLICATION.bot.set_webhook(
-                    url=WEBHOOK_URL,
-                    secret_token=WEBHOOK_SECRET if WEBHOOK_SECRET else None
-                )
-                logger.debug("Webhook set successfully.")
-            except Exception as e:
-                logger.error(f"Failed to set webhook: {str(e)}", exc_info=True)
-                raise
-            logger.debug("Creating process update queue task...")
-            asyncio.create_task(process_update_queue())
-            logger.debug("Process update queue task created.")
-            MAIN_INITIALIZED = True
-        except Exception as e:
-            logger.error(f"Error in init_main: {str(e)}", exc_info=True)
-            raise
 
-# اجرای init_main قبل از اولین درخواست
-@app.before_first_request
+# اجرای init_main قبل از شروع اپلیکیشن
 def initialize_app():
     logger.debug("Running app initialization...")
     try:
@@ -1152,3 +1154,9 @@ def initialize_app():
     except Exception as e:
         logger.error(f"Failed to initialize app: {str(e)}", exc_info=True)
         raise
+
+# اجرای اولیه
+initialize_app()
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(PORT))
