@@ -13,6 +13,7 @@ import re
 from threading import Lock
 from dotenv import load_dotenv
 import time
+import telegram  # Added to check the version
 
 # بارگذاری متغیرهای محیطی
 load_dotenv()
@@ -1078,9 +1079,10 @@ async def handle_page_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # ساخت اپلیکیشن
 def get_application():
+    logger.info(f"python-telegram-bot version: {telegram.__version__}")  # Added to check version
     logger.debug("Building application...")
     try:
-        application = Application.builder().token(BOT_TOKEN).http_timeout(20).build()
+        application = Application.builder().token(BOT_TOKEN).build()  # Removed http_timeout
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("cancel", cancel))
         application.add_handler(CommandHandler("admin", admin))
