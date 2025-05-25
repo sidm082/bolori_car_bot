@@ -37,7 +37,7 @@ logging.getLogger('httpx').setLevel(logging.DEBUG)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
-PORT = os.getenv("PORT", "5000")
+PORT = os.getenv("PORT", "8080")  # پورت پیش‌فرض به 8080 تغییر کرد
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@bolori_car")
 CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/bolori_car")
 
@@ -71,34 +71,46 @@ APPLICATION = None
 ADMIN_ID = [5677216420]
 current_pages = {}
 
+# مسیر دیتابیس
+DATABASE_PATH = "/app/database.db"
+
 # اتصال به دیتابیس
 def get_db_connection():
-    conn = sqlite3.connect('database.db')
-    conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn
+    except sqlite3.Error as e:
+        logger.error(f"Failed to connect to database: {e}")
+        raise
 
 # مقداردهی اولیه دیتابیس
 def init_db():
     logger.debug("Initializing database...")
-    with get_db_connection() as conn:
-        conn.execute('''CREATE TABLE IF NOT EXISTS users
-                      (user_id INTEGER PRIMARY KEY, joined TEXT, blocked INTEGER DEFAULT 0, username TEXT)''')
-        conn.execute('''CREATE TABLE IF NOT EXISTS ads
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, type TEXT,
-                       title TEXT, description TEXT, price INTEGER, created_at TEXT,
-                       status TEXT, image_id TEXT, phone TEXT)''')
-        conn.execute('''CREATE TABLE IF NOT EXISTS admins
-                      (user_id INTEGER PRIMARY KEY)''')
-        conn.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (5677216420,))
-        conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_status
-                      ON ads (status)''')
-        conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_approved 
-                  ON ads (status, created_at DESC)''')
-        conn.commit()
-        conn.execute('''CREATE INDEX IF NOT EXISTS idx_users_id 
-                  ON users (user_id)''')
-        conn.commit()
-        logger.debug("Database initialized successfully.")
+    try:
+        # اطمینان از وجود دایرکتوری
+        os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+        with get_db_connection() as conn:
+            conn.execute('''CREATE TABLE IF NOT EXISTS users
+                          (user_id INTEGER PRIMARY KEY, joined TEXT, blocked INTEGER DEFAULT 0, username TEXT)''')
+            conn.execute('''CREATE TABLE IF NOT EXISTS ads
+                          (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, type TEXT,
+                           title TEXT, description TEXT, price INTEGER, created_at TEXT,
+                           status TEXT, image_id TEXT, phone TEXT)''')
+            conn.execute('''CREATE TABLE IF NOT EXISTS admins
+                          (user_id INTEGER PRIMARY KEY)''')
+            conn.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (5677216420,))
+            conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_status
+                          ON ads (status)''')
+            conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_approved 
+                      ON ads (status, created_at DESC)''')
+            conn.execute('''CREATE INDEX IF NOT EXISTS idx_users_id 
+                      ON users (user_id)''')
+            conn.commit()
+            logger.debug("Database initialized successfully.")
+    except sqlite3.Error as e:
+        logger.error(f"Database initialization failed: {e}")
+        raise
 
 # بارگذاری ادمین‌ها
 def load_admins():
@@ -199,12 +211,14 @@ async def webhook():
 # مسیر سلامت
 @app.route('/')
 def health_check():
+    logger.debug("Health check requested")
     try:
         with get_db_connection() as conn:
             conn.execute("SELECT 1")
+        logger.debug("Health check successful")
         return Response('OK', status=200)
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.error(f"Health check failed: {e}", exc_info=True)
         return Response('Internal Server Error', status=500)
 
 # پردازش صف آپدیت‌ها
@@ -1096,13 +1110,6 @@ async def main():
         logger.error(f"Error in main: {e}", exc_info=True)
         raise
 
-# تابع اجرا
-def run():
-    init_db()
-    global ADMIN_ID, APPLICATION
-    ADMIN_ID = load_admins()
-    asyncio.run(main())
-    app.run(host='0.0.0.0', port=int(PORT), debug=False)
-
+# اجرای برنامه
 if __name__ == '__main__':
-    run()
+    asyncio.run(main())
