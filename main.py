@@ -14,6 +14,10 @@ import json
 import re
 from threading import Lock
 from uuid import uuid4
+from dotenv import load_dotenv
+
+# بارگذاری متغیرهای محیطی از فایل .env (در صورت وجود)
+load_dotenv()
 
 # تنظیم لاگ‌گیری
 logging.basicConfig(
@@ -29,25 +33,36 @@ logging.getLogger('telegram').setLevel(logging.DEBUG)
 logging.getLogger('httpcore').setLevel(logging.DEBUG)
 logging.getLogger('httpx').setLevel(logging.DEBUG)
 
-# تابع ترجمه نوع آگهی
-def translate_ad_type(ad_type):
-    return "آگهی" if ad_type == "ad" else "حواله"
-
-# دیکشنری و Lock برای FSM
-FSM_STATES = {}
-FSM_LOCK = Lock()
-
 # متغیرهای محیطی
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
-PORT = int(os.getenv("PORT", 5000))
+PORT = os.getenv("PORT", "5000")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@bolori_car")
 CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/bolori_car")
 
-if not all([BOT_TOKEN, WEBHOOK_URL, CHANNEL_ID, CHANNEL_URL]):
-    logger.error("Missing required environment variables")
-    raise ValueError("Missing required environment variables")
+# چاپ متغیرها برای دیباگ
+logger.info(f"BOT_TOKEN: {BOT_TOKEN}")
+logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
+logger.info(f"WEBHOOK_SECRET: {WEBHOOK_SECRET}")
+logger.info(f"PORT: {PORT}")
+logger.info(f"CHANNEL_ID: {CHANNEL_ID}")
+logger.info(f"CHANNEL_URL: {CHANNEL_URL}")
+
+# بررسی متغیرهای محیطی
+missing_vars = []
+if not BOT_TOKEN:
+    missing_vars.append("BOT_TOKEN")
+if not WEBHOOK_URL:
+    missing_vars.append("WEBHOOK_URL")
+if not CHANNEL_ID:
+    missing_vars.append("CHANNEL_ID")
+if not CHANNEL_URL:
+    missing_vars.append("CHANNEL_URL")
+
+if missing_vars:
+    logger.error(f"Missing environment variables: {', '.join(missing_vars)}")
+    raise ValueError(f"Missing environment variables: {', '.join(missing_vars)}")
 
 # متغیرهای جهانی
 update_queue = queue.Queue()
@@ -104,6 +119,14 @@ def safe_json_loads(data):
         logger.warning(f"Invalid JSON in image_id: {data}")
         return [data] if data else []
 
+# تابع ترجمه نوع آگهی
+def translate_ad_type(ad_type):
+    return "آگهی" if ad_type == "ad" else "حواله"
+
+# دیکشنری و Lock برای FSM
+FSM_STATES = {}
+FSM_LOCK = Lock()
+
 # تابع ارسال آگهی به تمام کاربران
 async def broadcast_ad(context: ContextTypes.DEFAULT_TYPE, ad):
     logger.debug(f"Broadcasting ad {ad['id']} to all users")
@@ -116,7 +139,7 @@ async def broadcast_ad(context: ContextTypes.DEFAULT_TYPE, ad):
             f"🚗 {translate_ad_type(ad['type'])} جدید:\n"
             f"عنوان: {ad['title']}\n"
             f"توضیحات: {ad['description']}\n"
-            f"قیمت: {ad['price']:,} تومانmoor
+            f"قیمت: {ad['price']:,} تومان\n"
             f"📢 برای جزئیات بیشتر به ربات مراجعه کنید: @Bolori_car_bot\n"
             f"""➖➖➖➖➖
 ☑️ اتوگالــری بلـــوری
@@ -177,8 +200,7 @@ async def webhook():
 @app.route('/')
 def health_check():
     try:
-        with programming_language="python"
-get_db_connection() as conn:
+        with get_db_connection() as conn:
             conn.execute("SELECT 1")
         return Response('OK', status=200)
     except Exception as e:
@@ -1080,7 +1102,7 @@ def run():
     global ADMIN_ID, APPLICATION
     ADMIN_ID = load_admins()
     asyncio.run(main())
-    app.run(host='0.0.0.0', port=PORT, debug=False)
+    app.run(host='0.0.0.0', port=int(PORT), debug=False)
 
 if __name__ == '__main__':
     run()
