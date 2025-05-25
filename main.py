@@ -8,7 +8,6 @@ import sqlite3
 from datetime import datetime
 import time
 from threading import Lock
-from threading import Lock
 from dotenv import load_dotenv
 import telegram  # For version checking
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
@@ -247,7 +246,7 @@ async def process_update_queue():
         except queue.Empty:
             await asyncio.sleep(0.1)
         except Exception as e:
-            logger.error(f"Error processing queued update: {e}", exc_info=True)
+            logger.error(f"Error processing queued update: {e}")
             await asyncio.sleep(1)
 
 # بررسی عضویت
@@ -285,7 +284,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user.id in ADMIN_ID:
             buttons.extend([
                 [InlineKeyboardButton("📋 بررسی آگهی‌ها", callback_data="review_ads_ad")],
-                [InlineKeyboardButton("📋 بررسی حواله‌ها", callback_data="review_ads_referral")],
+                [InlineKeyboardButton("📋 بررسی حواله‌ها", callback_data="review_ads_referral")]
                 [InlineKeyboardButton("📊 آمار کاربران", callback_data="stats")],
                 [InlineKeyboardButton("📢 ارسال پیام به همه", callback_data="broadcast_message")],
                 [InlineKeyboardButton("🚫 کاربران بلاک‌کننده", callback_data="blocked_users")]
@@ -339,10 +338,8 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"Admin command received from user {user_id}")
     if user_id in ADMIN_ID:
         buttons = [
-            [InlineKeyboardButton("📋 بررسی آگهی‌ها", callback_data="review_ads_ad")],
-            [InlineKeyboardButton("📋 بررسی حواله‌ها", callback_data="review_ads_referral")],
-            [InlineKeyboardButton("📊 آمار کاربران", callback_data="stats")],
-            [InlineKeyboardButton("📢 ارسال پیام به همه", callback_data="broadcast_message")],
+            [InlineKeyboardButton("📋 بررسی آگهی‌ها", callback_data="review_ads")],
+            [InlineKeyboardButton("📊 آمار نوع آگهی‌ها", callback_data="stats")]
             [InlineKeyboardButton("🚫 کاربران بلاک‌کننده", callback_data="blocked_users")]
         ]
         await update.effective_message.reply_text(
@@ -351,7 +348,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         logger.debug(f"User {user_id} is not an admin")
-        await update.effective_message.reply_text("⚠️ شما دسترسی ادمین ندارید.")
+        await update.effective_message.reply_text(⚠️ شما دسترسی ادمین ندارید.")
 
 # دستور stats
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -527,7 +524,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                             logger.error(f"Error notifying admin {ad_id}: {e}")
                             await context.bot.send_message(
                                 chat_id=admin_id,
-                                text=f"خخطا در ارسال خطاگهی: {ad_text}",
+                                text=f"خطا در ارسال آگهی: {ad_text}",
                                 reply_markup=InlineKeyboardMarkup(buttons)
                             )
                     with FSM_LOCK:
@@ -543,7 +540,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                     return
                 photo = message.photo[-1].file_id
                 FSM_STATES[user_id]["images"].append(photo)
-                await message.reply_text(f"عکس ف{len(FSM_STATES[user_id]['images'])} دریافت شد. عکس بعدی یا /done")
+                await message.reply_text(f"عکس {len(FSM_STATES[user_id]['images'])} دریافت شد. عکس بعدی یا /done")
                 return
             else:
                 await message.reply_text(
@@ -555,20 +552,20 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
         await message.reply_text("❌ خطایی رخ داد. لطفاً دوباره امتحان کنید.")
 
 # مدیریت پیام‌های حواله
-async def post_referral_handle_message():
+async def post_referral_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(f"Entering post_referral_handle_message for user {user_id}")
     with FSM_LOCK:
-        if user_id not in FSM_STATES or "state" not in user_id:
-            logger.debug(f"No FSM state for user_id {user_id}, ignoring message")
+        if user_id not in FSM_STATES or "state" not in FSM_STATES[user_id]:
+            logger.debug(f"No FSM state for user {user_id}, ignoring message")
             try:
                 await update.message.reply_text("⚖️ لطفاً فرآیند ثبت حواله را از ابتدا شروع کنید (/start).")
             except Exception as e:
-                logger.error(f"Failed to send invalid state message to user_id {user_id}: {e}, exc_info=True")
+                logger.error(f"Failed to send invalid state message to user {user_id}: {e}", exc_info=True)
             return
-        state = user_id["state"]
+        state = FSM_STATES[user_id]["state"]
     message = update.message
-    logger.debug(f"Handling message for user_id {user_id} in state {state}")
+    logger.debug(f"Handling message for user {user_id} in state {state}")
     try:
         if state == "post_referral_title":
             with FSM_LOCK:
@@ -579,7 +576,7 @@ async def post_referral_handle_message():
             with FSM_LOCK:
                 FSM_STATES[user_id]["description"] = message.text
                 FSM_STATES[user_id]["state"] = "post_referral_price"
-            await update.message.reply_text("لطفآ قیمت حواله را به تومان وارد کنید (فقط عدد):")
+            await update.message.reply_text("لطفاً قیمت حواله را به تومان وارد کنید (فقط عدد):")
         elif state == "post_referral_price":
             try:
                 price = int(message.text)
@@ -604,7 +601,7 @@ async def post_referral_handle_message():
             elif message.text:
                 phone_number = message.text.strip()
             else:
-                await update.message.reply_text("لطفاً شماره تلفن خود را ارسال کنید یا روی دکمه 'ارسال شماره تماس کنید.")
+                await update.message.reply_text("لطفاً شماره تلفن خود را ارسال کنید یا روی دکمه 'ارسال شماره تماس' کلیک کنید.")
                 return
 
             if re.match(r"^(09\d{9}|\+98\d{10}|98\d{10})$", phone_number):
@@ -613,11 +610,11 @@ async def post_referral_handle_message():
                 await save_referral(update, context)
             else:
                 await update.message.reply_text(
-                    "⚠️ شماره تلفن معتبر نیست."
+                    "⚠️ شماره تلفن نامعتبر است. باید با 09 (11 رقم) یا +98 (13 کاراکتر) یا 98 (12 رقم) شروع شود. لطفاً دوباره امتحان کنید."
                 )
     except Exception as e:
         logger.error(f"Error in post_referral_handle_message for user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text("❌ خطایی رخ داد.")
+        await update.message.reply_text("❌ خطایی رخ داد. لطفاً دوباره امتحان کنید.")
         with FSM_LOCK:
             if user_id in FSM_STATES:
                 del FSM_STATES[user_id]
@@ -649,13 +646,13 @@ async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.debug(f"Referral saved successfully for user {user_id} with ad_id {ad_id}")
         await update.message.reply_text(
             "🌟 حواله شما ثبت شد و در انتظار تأیید ادمین است.\n*ممنون از اعتماد شما*",
-            reply_markup=ReplyKeyboardMarkup([], []),
+            reply_markup=ReplyKeyboardMarkup([]),
         )
         username = update.effective_user.username or "بدون نام کاربری"
         for admin_id in ADMIN_ID:
             buttons = [
                 [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_referral_{ad_id}"),
-                [InlineKeyboardButton("❌ رد", callback_data=f"reject_referral_{ad_id}")]
+                 InlineKeyboardButton("❌ رد", callback_data=f"reject_referral_{ad_id}")]
             ]
             ad_text = (
                 f"حواله جدید از کاربر {user_id}:\n"
@@ -797,8 +794,8 @@ async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, ad_type
                 f"کاربر: {user_id}"
             )
             buttons = [
-                [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_{ad_type}_{ad['id']}")],
-                [InlineKeyboardButton("❌ رد", callback_data=f"reject_{ad_type}_{ad['id']}")]
+                [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_{ad_type}_{ads['id']}")],
+                [InlineKeyboardButton("❌ رد", callback_data=f"reject_{ad_type}_{ads['id']}")]
             ]
             if images:
                 await context.bot.send_photo(
@@ -824,7 +821,7 @@ async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, ad_type
 async def message_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(
-        f"Message dispatcher for user {user_id}: {update.message.text() if update.message and update.message.text else 'Non-text message'}"
+        f"Message dispatcher for user {user_id}: {update.message.text if update.message and update.message.text else 'Non-text message'}"
     )
 
     if not update.message:
@@ -938,7 +935,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif callback_data.startswith("approve_"):
         if user_id in ADMIN_ID:
             try:
-                _, ad_type, ad_id = callback_data.split("_")
+                parts = callback_data.split("_")
+                if len(parts) != 3:
+                    logger.error(f"Invalid approve callback data: {callback_data}")
+                    await query.message.reply_text("❌ فرمت داده نامعتبر است.")
+                    return
+                _, ad_type, ad_id = parts
                 ad_id = int(ad_id)
                 with get_db_connection() as conn:
                     ad = conn.execute(
@@ -961,7 +963,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(
                     chat_id=ad['user_id'],
                     text=(
-                        f"✅ {translate_ad_type(ad_type)} شما تأیید شد:\n"
+                        f"✅ {translate_ad_type(ad['type'])} شما تأیید شد:\n"
                         f"عنوان: {ad['title']}\n"
                         f"توضیحات: {ad['description']}\n"
                         f"قیمت: {ad['price']:,} تومان\n"
@@ -981,7 +983,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif callback_data.startswith("reject_"):
         if user_id in ADMIN_ID:
             try:
-                _, ad_type, ad_id = callback_data.split("_")
+                parts = callback_data.split("_")
+                if len(parts) != 3:
+                    logger.error(f"Invalid reject callback data: {callback_data}")
+                    await query.message.reply_text("❌ فرمت داده نامعتبر است.")
+                    return
+                _, ad_type, ad_id = parts
                 ad_id = int(ad_id)
                 with get_db_connection() as conn:
                     ad = conn.execute(
@@ -1091,7 +1098,7 @@ def get_application():
         application.add_handler(CommandHandler("admin", admin))
         application.add_handler(CommandHandler("stats", stats))
         application.add_handler(CallbackQueryHandler(handle_callback))
-        application.add_handler(CallbackQueryHandler(handle_page_callback, pattern=r"^page_\d]+$"))
+        application.add_handler(CallbackQueryHandler(handle_page_callback, pattern=r"^page_\d+$"))
         application.add_handler(MessageHandler(
             filters.TEXT | filters.PHOTO | filters.CONTACT | filters.COMMAND,
             message_dispatcher
