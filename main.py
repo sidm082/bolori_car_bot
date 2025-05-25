@@ -127,7 +127,7 @@ def safe_json_loads(data):
         return []
     try:
         return json.loads(data)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
         logger.warning(f"Invalid JSON in image_id: {data}")
         return [data] if data else []
 
@@ -155,7 +155,7 @@ async def broadcast_ad(context: ContextTypes.DEFAULT_TYPE, ad):
             f"📢 برای جزئیات بیشتر به ربات مراجعه کنید: @Bolori_car_bot\n"
             f"""➖➖➖➖➖
 ☑️ اتوگالــری بلـــوری
-▫️خرید▫️فروش▫️کارشناسی
+▫️خرید▫️فروش▫کارشناسی
 +989153632957
 ➖➖➖➖
 @Bolori_Car
@@ -246,7 +246,7 @@ async def process_update_queue():
         except queue.Empty:
             await asyncio.sleep(0.1)
         except Exception as e:
-            logger.error(f"Error processing queued update: {e}")
+            logger.error(f"Error processing queued update: {e}", exc_info=True)
             await asyncio.sleep(1)
 
 # بررسی عضویت
@@ -284,7 +284,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user.id in ADMIN_ID:
             buttons.extend([
                 [InlineKeyboardButton("📋 بررسی آگهی‌ها", callback_data="review_ads_ad")],
-                [InlineKeyboardButton("📋 بررسی حواله‌ها", callback_data="review_ads_referral")]
+                [InlineKeyboardButton("📋 بررسی حواله‌ها", callback_data="review_ads_referral")],
                 [InlineKeyboardButton("📊 آمار کاربران", callback_data="stats")],
                 [InlineKeyboardButton("📢 ارسال پیام به همه", callback_data="broadcast_message")],
                 [InlineKeyboardButton("🚫 کاربران بلاک‌کننده", callback_data="blocked_users")]
@@ -338,8 +338,10 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"Admin command received from user {user_id}")
     if user_id in ADMIN_ID:
         buttons = [
-            [InlineKeyboardButton("📋 بررسی آگهی‌ها", callback_data="review_ads")],
-            [InlineKeyboardButton("📊 آمار نوع آگهی‌ها", callback_data="stats")]
+            [InlineKeyboardButton("📋 بررسی آگهی‌ها", callback_data="review_ads_ad")],
+            [InlineKeyboardButton("📋 بررسی حواله‌ها", callback_data="review_ads_referral")],
+            [InlineKeyboardButton("📊 آمار کاربران", callback_data="stats")],
+            [InlineKeyboardButton("📢 ارسال پیام به همه", callback_data="broadcast_message")],
             [InlineKeyboardButton("🚫 کاربران بلاک‌کننده", callback_data="blocked_users")]
         ]
         await update.effective_message.reply_text(
@@ -348,7 +350,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         logger.debug(f"User {user_id} is not an admin")
-        await update.effective_message.reply_text(⚠️ شما دسترسی ادمین ندارید.")
+        await update.effective_message.reply_text("هشدار: شما دسترسی ادمین ندارید.")
 
 # دستور stats
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -370,7 +372,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.effective_message.reply_text("❌ خطایی در دریافت آمار رخ داد.")
     else:
         logger.debug(f"User {user_id} is not an admin")
-        await update.effective_message.reply_text("⚠️ شما دسترسی ادمین ندارید.")
+        await update.effective_message.reply_text("هشدار: شما دسترسی ادمین ندارید.")
 
 # شروع ثبت آگهی
 async def post_ad_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -521,7 +523,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                                     reply_markup=InlineKeyboardMarkup(buttons)
                                 )
                         except Exception as e:
-                            logger.error(f"Error notifying admin {ad_id}: {e}")
+                            logger.error(f"Error notifying admin {admin_id}: {e}")
                             await context.bot.send_message(
                                 chat_id=admin_id,
                                 text=f"خطا در ارسال آگهی: {ad_text}",
@@ -750,8 +752,10 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"Admin panel requested by user {user_id}")
     if user_id in ADMIN_ID:
         buttons = [
-            [InlineKeyboardButton("📋 بررسی آگهی‌ها", callback_data="review_ads")],
+            [InlineKeyboardButton("📋 بررسی آگهی‌ها", callback_data="review_ads_ad")],
+            [InlineKeyboardButton("📋 بررسی حواله‌ها", callback_data="review_ads_referral")],
             [InlineKeyboardButton("📊 آمار کاربران", callback_data="stats")],
+            [InlineKeyboardButton("📢 ارسال پیام به همه", callback_data="broadcast_message")],
             [InlineKeyboardButton("🚫 کاربران بلاک‌کننده", callback_data="blocked_users")]
         ]
         await update.effective_message.reply_text(
@@ -760,14 +764,14 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         logger.debug(f"User {user_id} is not an admin")
-        await update.effective_message.reply_text("⚠️ شما دسترسی ادمین ندارید.")
+        await update.effective_message.reply_text("هشدار: شما دسترسی ادمین ندارید.")
 
 # بررسی آگهی‌ها
 async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, ad_type=None):
     user_id = update.effective_user.id
     logger.debug(f"Review ads requested by user {user_id} for type {ad_type}")
     if user_id not in ADMIN_ID:
-        await update.effective_message.reply_text("⚠️ شما دسترسی ادمین ندارید.")
+        await update.effective_message.reply_text("هشدار: شما دسترسی ادمین ندارید.")
         return
     try:
         with get_db_connection() as conn:
@@ -911,7 +915,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 FSM_STATES[user_id] = {"state": "broadcast_message"}
             await query.message.reply_text("لطفاً پیام (متن یا عکس) را ارسال کنید.")
         else:
-            await query.message.reply_text("⚠️ شما ادمین نیستید.")
+            await query.message.reply_text("هشدار: شما ادمین نیستید.")
     elif callback_data == "blocked_users":
         if user_id in ADMIN_ID:
             try:
@@ -931,7 +935,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Error fetching blocked users: {e}")
                 await query.message.reply_text("❌ خطایی در نمایش کاربران بلاک‌کننده رخ داد.")
         else:
-            await query.message.reply_text("⚠️ شما ادمین نیستید.")
+            await query.message.reply_text("هشدار: شما ادمین نیستید.")
     elif callback_data.startswith("approve_"):
         if user_id in ADMIN_ID:
             try:
@@ -979,7 +983,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Error in approve for ad {ad_id}: {e}", exc_info=True)
                 await query.message.reply_text("❌ خطایی در تأیید آگهی رخ داد.")
         else:
-            await query.message.reply_text("⚠️ شما ادمین نیستید.")
+            await query.message.reply_text("هشدار: شما ادمین نیستید.")
     elif callback_data.startswith("reject_"):
         if user_id in ADMIN_ID:
             try:
@@ -1012,7 +1016,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Error in reject for ad {ad_id}: {e}", exc_info=True)
                 await query.message.reply_text("❌ خطایی در رد آگهی رخ داد.")
         else:
-            await query.message.reply_text("⚠️ شما ادمین نیستید.")
+            await query.message.reply_text("هشدار: شما ادمین نیستید.")
     elif callback_data == "confirm_broadcast":
         if user_id in ADMIN_ID and FSM_STATES.get(user_id, {}).get("state") == "broadcast_message":
             try:
@@ -1050,7 +1054,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 with FSM_LOCK:
                     del FSM_STATES[user_id]
         else:
-            await query.message.reply_text("⚠️ دسترسی ندارید.")
+            await query.message.reply_text("هشدار: دسترسی ندارید.")
     elif callback_data == "cancel_broadcast":
         with FSM_LOCK:
             if user_id in FSM_STATES:
