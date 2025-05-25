@@ -1112,18 +1112,27 @@ async def init_main():
             logger.debug(f"Loaded {len(ADMIN_ID)} admin IDs")
             logger.debug("Building application...")
             APPLICATION = get_application()
+            logger.debug("Application built successfully.")
             logger.debug("Initializing application...")
             await APPLICATION.initialize()
             logger.debug("Application initialized.")
             logger.debug("Deleting existing webhook...")
-            await APPLICATION.bot.delete_webhook(drop_pending_updates=True)
-            logger.debug("Webhook deleted.")
+            try:
+                await APPLICATION.bot.delete_webhook(drop_pending_updates=True)
+                logger.debug("Webhook deleted successfully.")
+            except Exception as e:
+                logger.error(f"Failed to delete webhook: {str(e)}", exc_info=True)
+                raise
             logger.debug(f"Setting webhook to {WEBHOOK_URL}...")
-            await APPLICATION.bot.set_webhook(
-                url=WEBHOOK_URL,
-                secret_token=WEBHOOK_SECRET if WEBHOOK_SECRET else None
-            )
-            logger.debug("Webhook set successfully.")
+            try:
+                await APPLICATION.bot.set_webhook(
+                    url=WEBHOOK_URL,
+                    secret_token=WEBHOOK_SECRET if WEBHOOK_SECRET else None
+                )
+                logger.debug("Webhook set successfully.")
+            except Exception as e:
+                logger.error(f"Failed to set webhook: {str(e)}", exc_info=True)
+                raise
             logger.debug("Creating process update queue task...")
             asyncio.create_task(process_update_queue())
             logger.debug("Process update queue task created.")
@@ -1146,7 +1155,9 @@ def run_async_init():
 # شروع حلقه رویداد در یک رشته جداگانه
 with app.app_context():
     try:
+        time.sleep(1)  # تأخیر 1 ثانیه برای اطمینان از آماده بودن gunicorn
         thread = Thread(target=run_async_init, daemon=True)
         thread.start()
+        logger.debug("Async init thread started successfully.")
     except Exception as e:
         logger.error(f"Failed to start async init thread: {str(e)}", exc_info=True)
