@@ -6,15 +6,12 @@ from telegram.error import TelegramError, Forbidden, BadRequest
 from flask import Flask, request, Response
 import queue
 import asyncio
-from threading import Thread
 import sqlite3
 from datetime import datetime
-import time
 import os
 import json
 import re
 from threading import Lock
-from uuid import uuid4
 from dotenv import load_dotenv
 
 # بارگذاری متغیرهای محیطی از فایل .env (در صورت وجود)
@@ -1079,7 +1076,7 @@ async def handle_page_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 def get_application():
     logger.debug("Building application...")
     try:
-        application = Application.builder().token(BOT_TOKEN).build()
+        application = Application.builder().token(BOT_TOKEN).http_timeout(20).build()
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("cancel", cancel))
         application.add_handler(CommandHandler("admin", admin))
@@ -1141,23 +1138,17 @@ async def init_main():
             logger.error(f"Error in init_main: {str(e)}", exc_info=True)
             raise
 
-# اجرای init_main در یک حلقه رویداد پس‌زمینه
-def run_async_init():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+# اجرای init_main قبل از اولین درخواست
+@app.before_first_request
+def initialize_app():
+    logger.debug("Running app initialization...")
     try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
         loop.run_until_complete(init_main())
+        logger.debug("App initialization completed.")
     except Exception as e:
-        logger.error(f"Failed to run async init: {str(e)}", exc_info=True)
-    finally:
-        loop.close()
-
-# شروع حلقه رویداد در یک رشته جداگانه
-with app.app_context():
-    try:
-        time.sleep(1)  # تأخیر 1 ثانیه برای اطمینان از آماده بودن gunicorn
-        thread = Thread(target=run_async_init, daemon=True)
-        thread.start()
-        logger.debug("Async init thread started successfully.")
-    except Exception as e:
-        logger.error(f"Failed to start async init thread: {str(e)}", exc_info=True)
+        logger.error(f"Failed to initialize app: {str(e)}", exc_info=True)
+        raise
