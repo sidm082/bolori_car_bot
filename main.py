@@ -610,11 +610,11 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
                 await save_referral(update, context)
             else:
                 await update.message.reply_text(
-                    "⚠️ شماره تلفن نامعتبر است. باید با 09 (11 رقم) یا +98 (13 کاراکتر) یا 98 (12 رقم) شروع شود. لطفاً دوباره امتحان کنید."
+                    "⚠️ شماره تلفن معتبر نیست."
                 )
     except Exception as e:
         logger.error(f"Error in post_referral_handle_message for user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text("❌ خطایی در پردازش درخواست شما رخ داد.")
+        await update.message.reply_text("❌ خطایی رخ داد.")
         with FSM_LOCK:
             if user_id in FSM_STATES:
                 del FSM_STATES[user_id]
@@ -625,7 +625,8 @@ async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"Saving referral for user {user_id}")
     try:
         with get_db_connection() as conn:
-            cursor = conn.execute(
+            cursor = conn.cursor()
+            cursor.execute(
                 '''INSERT INTO ads (user_id, type, title, description, price, created_at, status, image_id, phone)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (
@@ -638,7 +639,7 @@ async def save_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "pending",
                     None,
                     FSM_STATES[user_id]["phone"],
-                ),
+                )
             )
             ad_id = cursor.lastrowid
             conn.commit()
@@ -781,7 +782,8 @@ async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, ad_type
                 ).fetchone()
             if not ads:
                 await update.effective_message.reply_text(
-                    f"📪 هیچ {translate_ad_type(ad_type) if ad_type else 'آیتمی'} در انتظار تأییدی یافت نشد.")
+                    f"📪 هیچ {translate_ad_type(ad_type) if ad_type else 'آیتمی'} در انتظار تأییدی یافت نشد."
+                )
                 return
             images = safe_json_loads(ads['image_id'])
             ad_text = (
@@ -819,7 +821,8 @@ async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, ad_type
 async def message_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(
-        f"Message dispatcher for user {user_id}: {update.message.text if update.message and update.message.text else 'Non-text message'}")
+        f"Message dispatcher for user {user_id}: {update.message.text if update.message and update.message.text else 'Non-text message'}"
+    )
 
     if not update.message:
         logger.warning(f"Received update without message: {update.to_dict()}")
@@ -856,7 +859,10 @@ async def message_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 caption=FSM_STATES[user_id].get("broadcast_caption", "")
             )
         elif "broadcast_text" in FSM_STATES[user_id]:
-            await context.bot.send_message(chat_id=user_id, text=FSM_STATES[user_id]["broadcast_text"])
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=FSM_STATES[user_id]["broadcast_text"]
+            )
 
         buttons = [
             [InlineKeyboardButton("✅ ارسال به همه", callback_data="confirm_broadcast")],
@@ -1045,7 +1051,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # مدیریت خطاها
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.error(f"Update {update} caused error: {context.error}", exc_info=context.error)
+    logger.error(f"Update {update} caused error: {context.error}", exc_info=True)
     if update and update.effective_message:
         try:
             await update.effective_message.reply_text(
@@ -1064,7 +1070,7 @@ async def handle_page_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         await query.message.delete()
     except BadRequest as e:
-        logger.warning(f"Couldn't delete message: {e}")
+        logger.warning(f"Failed to delete message: {e}")
     except Exception as e:
         logger.error(f"Error deleting message: {e}")
 
@@ -1150,7 +1156,7 @@ def initialize_app():
         logger.error(f"Failed to initialize app: {str(e)}", exc_info=True)
         raise
 
-# اجرای اولیه
+# اجرای اصلی
 initialize_app()
 
 if __name__ == '__main__':
