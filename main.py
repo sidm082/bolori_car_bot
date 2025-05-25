@@ -6,6 +6,7 @@ from telegram.error import TelegramError, Forbidden, BadRequest
 from flask import Flask, request, Response
 import queue
 import asyncio
+from threading import Thread
 import sqlite3
 from datetime import datetime
 import time
@@ -37,7 +38,7 @@ logging.getLogger('httpx').setLevel(logging.DEBUG)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
-PORT = os.getenv("PORT", "8080")  # پورت پیش‌فرض به 8080 تغییر کرد
+PORT = os.getenv("PORT", "8080")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@bolori_car")
 CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/bolori_car")
 
@@ -70,14 +71,17 @@ app = Flask(__name__)
 APPLICATION = None
 ADMIN_ID = [5677216420]
 current_pages = {}
+MAIN_INITIALIZED = False
 
 # مسیر دیتابیس
-DATABASE_PATH = "/app/database.db"
+DATABASE_PATH = "/app/data/database.db"
 
 # اتصال به دیتابیس
 def get_db_connection():
     try:
-        conn = sqlite3.connect(DATABASE_PATH)
+        # اطمینان از وجود دایرکتوری
+        os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+        conn = sqlite3.connect(DATABASE_PATH, timeout=10)
         conn.row_factory = sqlite3.Row
         return conn
     except sqlite3.Error as e:
@@ -88,8 +92,6 @@ def get_db_connection():
 def init_db():
     logger.debug("Initializing database...")
     try:
-        # اطمینان از وجود دایرکتوری
-        os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
         with get_db_connection() as conn:
             conn.execute('''CREATE TABLE IF NOT EXISTS users
                           (user_id INTEGER PRIMARY KEY, joined TEXT, blocked INTEGER DEFAULT 0, username TEXT)''')
@@ -188,7 +190,7 @@ async def broadcast_ad(context: ContextTypes.DEFAULT_TYPE, ad):
 async def webhook():
     logger.debug("Received webhook request")
     if not APPLICATION:
-        logger.error("Application is not initialized")
+        logger.error("Application is not initialized. Check init_main execution.")
         return Response('Application not initialized', status=500)
     start_time = time.time()
     if WEBHOOK_SECRET and request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
@@ -204,8 +206,8 @@ async def webhook():
         logger.info(f"Webhook update queued in {time.time() - start_time:.2f} seconds")
         return Response(status=200)
     except Exception as e:
-        logger.error(f"Error processing webhook: {e}", exc_info=True)
-        return Response('Internal Server Error', status=500)
+        logger.error(f"Error processing webhook: {str(e)}", exc_info=True)
+        return Response(f'Internal Server Error: {str(e)}', status=500)
 
 # مسیر سلامت
 @app.route('/')
@@ -214,6 +216,9 @@ def health_check():
     try:
         with get_db_connection() as conn:
             conn.execute("SELECT 1")
+        if not APPLICATION:
+            logger.error("Application is not initialized for health check")
+            return Response('Application not initialized', status=500)
         logger.debug("Health check successful")
         return Response('OK', status=200)
     except Exception as e:
@@ -713,7 +718,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, page=0, a
                 f"📝 توضیحات: {ad['description']}\n"
                 f"💰 قیمت: {ad['price']:,} تومان\n"
                 f"""➖➖➖➖➖
-☑️ اتوگالــری بلـــوری
+☑️ اتوگالــری بلــ-high
 ▫️خرید▫️فروش▫️کارشناسی
 +989153632957
 ➖➖➖➖
@@ -1092,43 +1097,56 @@ def get_application():
         logger.error(f"Error building application: {e}", exc_info=True)
         raise
 
-# تابع اصلی
-async def main():
-    logger.debug("Starting main function...")
-    try:
-        logger.debug("Attempting to initialize database...")
-        init_db()
-        logger.debug("Database initialized successfully.")
-        global ADMIN_ID, APPLICATION
-        logger.debug("Loading admin IDs...")
-        ADMIN_ID = load_admins()
-        logger.debug(f"Loaded {len(ADMIN_ID)} admin IDs")
-        logger.debug("Building application...")
-        APPLICATION = get_application()
-        logger.debug("Initializing application...")
-        await APPLICATION.initialize()
-        logger.debug("Application initialized.")
-        logger.debug("Deleting existing webhook...")
-        await APPLICATION.bot.delete_webhook(drop_pending_updates=True)
-        logger.debug("Webhook deleted.")
-        logger.debug(f"Setting webhook to {WEBHOOK_URL}...")
-        await APPLICATION.bot.set_webhook(
-            url=WEBHOOK_URL,
-            secret_token=WEBHOOK_SECRET if WEBHOOK_SECRET else None
-        )
-        logger.debug("Webhook set successfully.")
-        logger.debug("Creating process update queue task...")
-        asyncio.create_task(process_update_queue())
-        logger.debug("Process update queue task created.")
-    except Exception as e:
-        logger.error(f"Error in main: {str(e)}", exc_info=True)
-        raise
+# تابع مقداردهی اولیه
+async def init_main():
+    global MAIN_INITIALIZED
+    if not MAIN_INITIALIZED:
+        logger.debug("Initializing main function...")
+        try:
+            logger.debug("Attempting to initialize database...")
+            init_db()
+            logger.debug("Database initialized successfully.")
+            global ADMIN_ID, APPLICATION
+            logger.debug("Loading admin IDs...")
+            ADMIN_ID = load_admins()
+            logger.debug(f"Loaded {len(ADMIN_ID)} admin IDs")
+            logger.debug("Building application...")
+            APPLICATION = get_application()
+            logger.debug("Initializing application...")
+            await APPLICATION.initialize()
+            logger.debug("Application initialized.")
+            logger.debug("Deleting existing webhook...")
+            await APPLICATION.bot.delete_webhook(drop_pending_updates=True)
+            logger.debug("Webhook deleted.")
+            logger.debug(f"Setting webhook to {WEBHOOK_URL}...")
+            await APPLICATION.bot.set_webhook(
+                url=WEBHOOK_URL,
+                secret_token=WEBHOOK_SECRET if WEBHOOK_SECRET else None
+            )
+            logger.debug("Webhook set successfully.")
+            logger.debug("Creating process update queue task...")
+            asyncio.create_task(process_update_queue())
+            logger.debug("Process update queue task created.")
+            MAIN_INITIALIZED = True
+        except Exception as e:
+            logger.error(f"Error in init_main: {str(e)}", exc_info=True)
+            raise
 
-# اجرای برنامه
-if __name__ == '__main__':
+# اجرای init_main در یک حلقه رویداد پس‌زمینه
+def run_async_init():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        asyncio.run(main())
-        logger.debug("Starting Flask server...")
-        app.run(host='0.0.0.0', port=int(PORT), debug=False)
+        loop.run_until_complete(init_main())
     except Exception as e:
-        logger.error(f"Error starting application: {e}", exc_info=True)
+        logger.error(f"Failed to run async init: {str(e)}", exc_info=True)
+    finally:
+        loop.close()
+
+# شروع حلقه رویداد در یک رشته جداگانه
+with app.app_context():
+    try:
+        thread = Thread(target=run_async_init, daemon=True)
+        thread.start()
+    except Exception as e:
+        logger.error(f"Failed to start async init thread: {str(e)}", exc_info=True)
