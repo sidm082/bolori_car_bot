@@ -1,7 +1,6 @@
 import logging
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto, KeyboardButton, \
-    ReplyKeyboardMarkup
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto, KeyboardButton, ReplyKeyboardMarkup
 from telegram.error import TelegramError, Forbidden, BadRequest
 from flask import Flask, request, Response
 import queue
@@ -681,9 +680,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, page=0, a
     try:
         with get_db_connection() as conn:
             if ad_type:
-                total_ads = \
-                conn.execute("SELECT COUNT(*) FROM ads WHERE status = 'approved' AND type = ?", (ad_type,)).fetchone()[
-                    0]
+                total_ads = conn.execute("SELECT COUNT(*) FROM ads WHERE status = 'approved' AND type = ?", (ad_type,)).fetchone()[0]
                 ads = conn.execute(
                     "SELECT * FROM ads WHERE status = 'approved' AND type = ? ORDER BY created_at DESC LIMIT 5 OFFSET ?",
                     (ad_type, page * 5)
@@ -810,9 +807,7 @@ async def review_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, ad_type
                     await asyncio.sleep(0.5)
             else:
                 await context.bot.send_message(
-                    ch
-```python
-at_id=user_id,
+                    chat_id=user_id,
                     text=ad_text,
                     reply_markup=InlineKeyboardMarkup(buttons)
                 )
