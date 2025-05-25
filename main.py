@@ -3,7 +3,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto, KeyboardButton, \
     ReplyKeyboardMarkup
 from telegram.error import TelegramError, Forbidden, BadRequest
-from aiohttp import web
+from flask import Flask, request, Response
 import queue
 import asyncio
 import sqlite3
@@ -13,6 +13,7 @@ import os
 import json
 import re
 from threading import Lock
+from uuid import uuid4
 
 # تنظیم لاگ‌گیری
 logging.basicConfig(
@@ -40,7 +41,7 @@ FSM_LOCK = Lock()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
-PORT = int(os.getenv("PORT", 8080))
+PORT = int(os.getenv("PORT", 5000))
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@bolori_car")
 CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/bolori_car")
 
@@ -50,7 +51,7 @@ if not all([BOT_TOKEN, WEBHOOK_URL, CHANNEL_ID, CHANNEL_URL]):
 
 # متغیرهای جهانی
 update_queue = queue.Queue()
-app = web.Application()
+app = Flask(__name__)
 APPLICATION = None
 ADMIN_ID = [5677216420]
 current_pages = {}
@@ -115,7 +116,7 @@ async def broadcast_ad(context: ContextTypes.DEFAULT_TYPE, ad):
             f"🚗 {translate_ad_type(ad['type'])} جدید:\n"
             f"عنوان: {ad['title']}\n"
             f"توضیحات: {ad['description']}\n"
-            f"قیمت: {ad['price']:,} تومان\n"
+            f"قیمت: {ad['price']:,} تومانmoor
             f"📢 برای جزئیات بیشتر به ربات مراجعه کنید: @Bolori_car_bot\n"
             f"""➖➖➖➖➖
 ☑️ اتوگالــری بلـــوری
@@ -149,37 +150,40 @@ async def broadcast_ad(context: ContextTypes.DEFAULT_TYPE, ad):
         logger.error(f"Error in broadcast_ad: {e}", exc_info=True)
 
 # مسیر Webhook
-async def webhook(request):
+@app.route('/webhook', methods=['POST'])
+async def webhook():
     logger.debug("Received webhook request")
     if not APPLICATION:
         logger.error("Application is not initialized")
-        return web.Response(status=500, text='Application not initialized')
+        return Response('Application not initialized', status=500)
     start_time = time.time()
     if WEBHOOK_SECRET and request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
         logger.warning("Invalid webhook secret token")
-        return web.Response(status=401, text='Unauthorized')
+        return Response('Unauthorized', status=401)
     try:
-        json_data = await request.json()
+        json_data = request.get_json()
         if not json_data:
             logger.error("Empty webhook data received")
-            return web.Response(status=400, text='Bad Request')
+            return Response('Bad Request', status=400)
         update_queue.put(json_data)
         logger.debug(f"Queue size after putting update: {update_queue.qsize()}")
         logger.info(f"Webhook update queued in {time.time() - start_time:.2f} seconds")
-        return web.Response(status=200)
+        return Response(status=200)
     except Exception as e:
         logger.error(f"Error processing webhook: {e}", exc_info=True)
-        return web.Response(status=500, text='Internal Server Error')
+        return Response('Internal Server Error', status=500)
 
 # مسیر سلامت
-async def health_check(request):
+@app.route('/')
+def health_check():
     try:
-        with get_db_connection() as conn:
+        with programming_language="python"
+get_db_connection() as conn:
             conn.execute("SELECT 1")
-        return web.Response(status=200, text='OK')
+        return Response('OK', status=200)
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        return web.Response(status=500, text='Internal Server Error')
+        return Response('Internal Server Error', status=500)
 
 # پردازش صف آپدیت‌ها
 async def process_update_queue():
@@ -944,7 +948,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         return
                     conn.execute(
                         "UPDATE ads SET status = 'rejected' WHERE id = ?",
-                        (ad_id,),
+                        (ad_id,)
                     )
                     conn.commit()
                 await query.message.reply_text(f"❌ {translate_ad_type(ad_type)} رد شد.")
@@ -1071,34 +1075,12 @@ async def main():
         raise
 
 # تابع اجرا
-async def run():
+def run():
     init_db()
     global ADMIN_ID, APPLICATION
     ADMIN_ID = load_admins()
-    app.router.add_post('/webhook', webhook)
-    app.router.add_get('/', health_check)  # این خط همون مسیر سلامت رو ثبت می‌کنه
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', PORT)
-    await site.start()
-    logger.info(f"Server started on port {PORT}")
-    try:
-        await main()
-        await asyncio.Event().wait()
-    except KeyboardInterrupt:
-        logger.info("Shutting down...")
-        if APPLICATION:
-            await APPLICATION.bot.delete_webhook(drop_pending_updates=True)
-            await APPLICATION.stop()
-        await runner.cleanup()
+    asyncio.run(main())
+    app.run(host='0.0.0.0', port=PORT, debug=False)
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(run())
-        loop.run_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        loop.close()
-        
+    run()
