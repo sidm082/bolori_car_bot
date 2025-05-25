@@ -718,7 +718,7 @@ async def show_ads(update: Update, context: ContextTypes.DEFAULT_TYPE, page=0, a
                 f"📝 توضیحات: {ad['description']}\n"
                 f"💰 قیمت: {ad['price']:,} تومان\n"
                 f"""➖➖➖➖➖
-☑️ اتوگالــری بلــ-high
+☑️ اتوگالــری بلـــوری
 ▫️خرید▫️فروش▫️کارشناسی
 +989153632957
 ➖➖➖➖
@@ -1079,7 +1079,7 @@ async def handle_page_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 def get_application():
     logger.debug("Building application...")
     try:
-        application = Application.builder().token(BOT_TOKEN).http_timeout(10).build()
+        application = Application.builder().token(BOT_TOKEN).build()
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("cancel", cancel))
         application.add_handler(CommandHandler("admin", admin))
@@ -1094,7 +1094,7 @@ def get_application():
         logger.debug("Application built successfully.")
         return application
     except Exception as e:
-        logger.error(f"Error building application: {e}", exc_info=True)
+        logger.error(f"Error building application: {str(e)}", exc_info=True)
         raise
 
 # تابع مقداردهی اولیه
