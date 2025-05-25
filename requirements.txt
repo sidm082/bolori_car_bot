@@ -1,6 +1,4 @@
-python-telegram-bot==21.6 
-aiohttp==3.11.18
-flask==3.0.3
-python-dotenv==1.0.0
-nest-asyncio==1.6.0
-gunicorn>=20.1.0
+flask
+python-telegram-bot==21.6
+python-dotenv
+gunicorn
