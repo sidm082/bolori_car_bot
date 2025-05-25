@@ -81,7 +81,7 @@ def get_db_connection():
         conn.row_factory = sqlite3.Row
         return conn
     except sqlite3.Error as e:
-        logger.error(f"Failed to connect to database: {e}")
+        logger.error(f"Failed to connect to database: {e}", exc_info=True)
         raise
 
 # مقداردهی اولیه دیتابیس
@@ -109,7 +109,7 @@ def init_db():
             conn.commit()
             logger.debug("Database initialized successfully.")
     except sqlite3.Error as e:
-        logger.error(f"Database initialization failed: {e}")
+        logger.error(f"Database initialization failed: {e}", exc_info=True)
         raise
 
 # بارگذاری ادمین‌ها
@@ -179,7 +179,6 @@ async def broadcast_ad(context: ContextTypes.DEFAULT_TYPE, ad):
                     conn.commit()
             except Exception as e:
                 logger.error(f"Error broadcasting ad to user {user['user_id']}: {e}")
-
         logger.debug(f"Ad {ad['id']} broadcasted to {len(users)} users")
     except Exception as e:
         logger.error(f"Error in broadcast_ad: {e}", exc_info=True)
@@ -219,7 +218,7 @@ def health_check():
         return Response('OK', status=200)
     except Exception as e:
         logger.error(f"Health check failed: {e}", exc_info=True)
-        return Response('Internal Server Error', status=500)
+        return Response(f'Internal Server Error: {str(e)}', status=500)
 
 # پردازش صف آپدیت‌ها
 async def process_update_queue():
@@ -1073,43 +1072,63 @@ async def handle_page_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # ساخت اپلیکیشن
 def get_application():
-    application = Application.builder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("cancel", cancel))
-    application.add_handler(CommandHandler("admin", admin))
-    application.add_handler(CommandHandler("stats", stats))
-    application.add_handler(CallbackQueryHandler(handle_callback))
-    application.add_handler(CallbackQueryHandler(handle_page_callback, pattern=r"^page_\d+$"))
-    application.add_handler(MessageHandler(
-        filters.TEXT | filters.PHOTO | filters.CONTACT | filters.COMMAND,
-        message_dispatcher
-    ))
-    application.add_error_handler(error_handler)
-    return application
+    logger.debug("Building application...")
+    try:
+        application = Application.builder().token(BOT_TOKEN).http_timeout(10).build()
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("cancel", cancel))
+        application.add_handler(CommandHandler("admin", admin))
+        application.add_handler(CommandHandler("stats", stats))
+        application.add_handler(CallbackQueryHandler(handle_callback))
+        application.add_handler(CallbackQueryHandler(handle_page_callback, pattern=r"^page_\d+$"))
+        application.add_handler(MessageHandler(
+            filters.TEXT | filters.PHOTO | filters.CONTACT | filters.COMMAND,
+            message_dispatcher
+        ))
+        application.add_error_handler(error_handler)
+        logger.debug("Application built successfully.")
+        return application
+    except Exception as e:
+        logger.error(f"Error building application: {e}", exc_info=True)
+        raise
 
 # تابع اصلی
 async def main():
     logger.debug("Starting main function...")
     try:
+        logger.debug("Attempting to initialize database...")
         init_db()
+        logger.debug("Database initialized successfully.")
         global ADMIN_ID, APPLICATION
+        logger.debug("Loading admin IDs...")
         ADMIN_ID = load_admins()
+        logger.debug(f"Loaded {len(ADMIN_ID)} admin IDs")
+        logger.debug("Building application...")
         APPLICATION = get_application()
+        logger.debug("Initializing application...")
         await APPLICATION.initialize()
         logger.debug("Application initialized.")
+        logger.debug("Deleting existing webhook...")
         await APPLICATION.bot.delete_webhook(drop_pending_updates=True)
         logger.debug("Webhook deleted.")
+        logger.debug(f"Setting webhook to {WEBHOOK_URL}...")
         await APPLICATION.bot.set_webhook(
             url=WEBHOOK_URL,
             secret_token=WEBHOOK_SECRET if WEBHOOK_SECRET else None
         )
         logger.debug("Webhook set successfully.")
+        logger.debug("Creating process update queue task...")
         asyncio.create_task(process_update_queue())
         logger.debug("Process update queue task created.")
     except Exception as e:
-        logger.error(f"Error in main: {e}", exc_info=True)
+        logger.error(f"Error in main: {str(e)}", exc_info=True)
         raise
 
 # اجرای برنامه
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+        logger.debug("Starting Flask server...")
+        app.run(host='0.0.0.0', port=int(PORT), debug=False)
+    except Exception as e:
+        logger.error(f"Error starting application: {e}", exc_info=True)
