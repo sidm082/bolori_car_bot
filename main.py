@@ -9,7 +9,7 @@ from datetime import datetime
 import time
 from threading import Lock
 from dotenv import load_dotenv
-import telegram  # For version checking
+import telegram
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto, KeyboardButton, ReplyKeyboardMarkup
 from telegram.error import TelegramError, Forbidden, BadRequest
@@ -73,7 +73,7 @@ MAIN_INITIALIZED = False
 INIT_LOCK = Lock()
 
 # مسیر دیتابیس
-DATABASE_PATH = "/app/data/database.db"
+DATABASE_PATH = "./data/database.db"
 
 # اتصال به دیتابیس
 def get_db_connection():
@@ -102,10 +102,10 @@ def init_db():
             conn.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (5677216420,))
             conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_status
                           ON ads (status)''')
-            conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_approved 
-                      ON ads (status, created_at DESC)''')
-            conn.execute('''CREATE INDEX IF NOT EXISTS idx_users_id 
-                      ON users (user_id)''')
+            conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_approved
+                          ON ads (status, created_at DESC)''')
+            conn.execute('''CREATE INDEX IF NOT EXISTS idx_users_id
+                          ON users (user_id)''')
             conn.commit()
             logger.debug("Database initialized successfully.")
     except sqlite3.Error as e:
@@ -427,7 +427,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                     reply_markup=keyboard
                 )
             except ValueError:
-                await update.message.reply_text("لطفاً فقط عدد وارد کنید:")
+                await update.message.reply_text("لطعا فقط عدد وارد کنید:")
         elif state == "post_ad_phone":
             phone_number = None
             if message.contact:
@@ -435,7 +435,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
             elif message.text:
                 phone_number = message.text.strip()
             else:
-                await update.message.reply_text("لطفاً شماره تلفن خود را ارسال کنید یا روی دکمه 'ارسال شماره تماس' کلیک کنید.")
+                await update.message.reply_text("لطفا شماره تلفن خود را ارسال کنید یا روی دکمه 'ارسال شماره تماس' کلیک کنید.")
                 return
 
             if re.match(r"^(09\d{9}|\+98\d{10}|98\d{10})$", phone_number):
@@ -444,19 +444,17 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                     FSM_STATES[user_id]["state"] = "post_ad_image"
                     FSM_STATES[user_id]["images"] = []
                 await update.message.reply_text(
-                    "اکنون لطفاً تصاویر واضح از خودرو ارسال نمایید (حداکثر 5 عدد). پس از ارسال همه عکس‌ها، /done را بزنید.",
-                    reply_markup=ReplyKeyboardMarkup([]),
+                    "اكنون لطفظاً تصاویر واضح از خودرو ارسال کنید (حداکثر 5 عدد). پس از ارسال تمام عکس‌ها، /done را بزنید.",
+                    reply_text=ReplyKeyboardMarkup([]),
                 )
             else:
                 await update.message.reply_text(
-                    "⚠️ شماره تلفن نامعتبر است. باید با 09 (11 رقم) یا +98 (13 کاراکتر) یا 98 (12 رقم) شروع شود. لطفاً دوباره امتحان کنید."
+                    "⚖️ شماره تلفن نامعتبر است. باید با 09 (11 رقم) یا +98 (13 کاراکتر) یا 98 (12 رقم) شروع شود. لطفاً دوباره امتحان کنید."
                 )
         elif state == "post_ad_image":
             if message.text == "/done":
-                if not FSM_STATES[user_id].get("images"):
-                    await message.reply_text(
-                        "شما هیچ عکسی آپلود نکردید. لطفاً حداقل یک عکس ارسال کنید یا /cancel بزنید."
-                    )
+                if not FSM_STATES[user_id].get("images'):
+                    await update.message("شما هیچ عکسی آپلود نکردید. لطفاً حداقل یک عکس ارسال کنید یا /cancel بزنید.")
                     return
                 try:
                     with get_db_connection() as conn:
@@ -471,7 +469,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                                 "ad",
                                 FSM_STATES[user_id]["title"],
                                 FSM_STATES[user_id]["description"],
-                                FSM_STATES[user_id]["price"],
+                                FSM_STATES[user_id]["price'],
                                 json.dumps(FSM_STATES[user_id]["images"]),
                                 FSM_STATES[user_id]["phone"],
                                 "pending",
@@ -479,8 +477,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                         )
                         ad_id = cursor.lastrowid
                         conn.commit()
-                        logger.debug(
-                            f"Ad saved for user {user_id} with id {ad_id} and {len(FSM_STATES[user_id]['images'])} images")
+                        logger.debug(f"Ad saved for user {user_id} with id {ad_id} and {len(FSM_STATES[user_id]['images'])} images")
 
                     await message.reply_text(
                         "✅ آگهی شما با موفقیت ثبت شد و در انتظار تأیید ادمین است."
@@ -488,21 +485,21 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
 
                     username = update.effective_user.username or "بدون نام کاربری"
                     ad_text = (
-                        f"🚗 آگهی جدید از کاربر {user_id}:\n"
+                        f"🚖️ آگهی جدید از کاربر {user_id}:\n"
                         f"نام کاربری: @{username}\n"
                         f"شماره تماس: {FSM_STATES[user_id]['phone']}\n"
                         f"عنوان: {FSM_STATES[user_id]['title']}\n"
                         f"توضیحات: {FSM_STATES[user_id]['description']}\n"
-                        f"💰 قیمت: {FSM_STATES[user_id]['price']:,} تومان\n"
-                        f"تعداد عکس‌ها: {len(FSM_STATES[user_id]['images'])}"
+                        f"💰 قیمت: {FSM_STATES[user_id]['price']}:,}\n"
+                        f"تعداد عکس‌ها: {len(user_id]['images'])}"
                     )
                     buttons = [
-                        [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_ad_{ad_id}")],
-                        [InlineKeyboardButton("❌ رد", callback_data=f"reject_ad_{ad_id}")]
-                    ]
+                        [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_ad_{ad_id}"],
+                        [InlineKeyboardButton("❌ رد", callback_data=f"reject_reject_ad_{ad_id}"]]
+                    )
                     for admin_id in ADMIN_ID:
                         try:
-                            if FSM_STATES[user_id]["images"]:
+                            if FSM_STATES[user_id]['images']:
                                 media = [
                                     InputMediaPhoto(media=photo, caption=ad_text if i == 0 else None)
                                     for i, photo in enumerate(FSM_STATES[user_id]["images"])
@@ -513,20 +510,20 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                                 )
                                 await context.bot.send_message(
                                     chat_id=admin_id,
-                                    text="لطفاً آگهی را تأیید یا رد کنید:",
-                                    reply_markup=InlineKeyboardMarkup(buttons)
-                                )
-                            else:
+                                    text="لطفاً آگهی را بررسی کنید:",
+                                    reply_text=InlineKeyboardMarkup(buttons)
+                                else:
                                 await context.bot.send_message(
                                     chat_id=admin_id,
                                     text=ad_text,
-                                    reply_markup=InlineKeyboardMarkup(buttons)
+                                    reply_text=InlineKeyboardMarkup(buttons)
                                 )
                         except Exception as e:
                             logger.error(f"Error notifying admin {admin_id}: {e}")
                             await context.bot.send_message(
                                 chat_id=admin_id,
                                 text=f"خطا در ارسال آگهی: {ad_text}",
+                                reply_text=f"خطا في النص الإعلاني: {ad_text}",
                                 reply_markup=InlineKeyboardMarkup(buttons)
                             )
                     with FSM_LOCK:
@@ -534,55 +531,55 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                     return
                 except Exception as e:
                     logger.error(f"Error saving ad for user {user_id}: {e}", exc_info=True)
-                    await update.message.reply_text("❌ خطایی در ثبت آگهی رخ داد.")
+                    await update.message.reply_text("❌ خطا در ثبت آگهی رخ داد.")
                     return
             elif message.photo:
                 if len(FSM_STATES[user_id]["images"]) >= 5:
-                    await message.reply_text("شما حداکثر 5 عکس می‌توانید ارسال کنید. لطفاً /done بزنید.")
+                    await update.message.reply_text("شما حداکثر 5 فصص قابل ارسال است. لطفاً /done را بزنید.")
                     return
                 photo = message.photo[-1].file_id
                 FSM_STATES[user_id]["images"].append(photo)
-                await message.reply_text(f"عکس {len(FSM_STATES[user_id]['images'])} دریافت شد. عکس بعدی یا /done")
+                await update.message.reply_text(f"عکس {len(FSM_STATES[user_id]['images'])} دریافت شد. عکس بعدی یا /done")
                 return
             else:
-                await message.reply_text(
+                await update.message.reply_text(
                     "لطفاً فقط عکس ارسال کنید یا برای اتمام /done را بزنید."
                 )
                 return
     except Exception as e:
         logger.error(f"Error in post_ad_handle_message for user {user_id}: {e}", exc_info=True)
-        await message.reply_text("❌ خطایی رخ داد. لطفاً دوباره امتحان کنید.")
+        await message.reply_text("😖 خطاکه رخ داد. لطفاً دوباره امتحان کنید.")
 
 # مدیریت پیام‌های حواله
 async def post_referral_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    logger.debug(f"Entering post_referral_handle_message for user {user_id}")
-    with FSM_LOCK:
+    logger.debug(f"Entering post_referral_handle_message для пользователя {user_id}")
+    with FSM_STATES_LOCK:
         if user_id not in FSM_STATES or "state" not in FSM_STATES[user_id]:
             logger.debug(f"No FSM state for user {user_id}, ignoring message")
             try:
-                await update.message.reply_text("⚖️ لطفاً فرآیند ثبت حواله را از ابتدا شروع کنید (/start).")
+                await update.message.reply_text("⚖️ لطفاً برای فرآیند ثبت حواله را از ابتدا شروع کنید (/start).")
             except Exception as e:
                 logger.error(f"Failed to send invalid state message to user {user_id}: {e}", exc_info=True)
             return
-        state = FSM_STATES[user_id]["state"]
+        state = FSM_STATES[user_id]["state']
     message = update.message
-    logger.debug(f"Handling message for user {user_id} in state {state}")
+    logger.debug(f"Handling message for user {user_id} in {state}")
     try:
         if state == "post_referral_title":
-            with FSM_LOCK:
+            with FSM_STATES_LOCK:
                 FSM_STATES[user_id]["title"] = message.text
                 FSM_STATES[user_id]["state"] = "post_referral_description"
-            await update.message.reply_text("لطفاً توضیحات حواله را وارد کنید:")
+            await update.message.reply_text("لطفاً توضیحات فاله را وارد کنید:")
         elif state == "post_referral_description":
-            with FSM_LOCK:
+            with FSM_STATES_LOCK:
                 FSM_STATES[user_id]["description"] = message.text
                 FSM_STATES[user_id]["state"] = "post_referral_price"
-            await update.message.reply_text("لطفاً قیمت حواله را به تومان وارد کنید (فقط عدد):")
+            await update.message.reply_text("لطفاً قیمت فاله را به تومان وارد کنید (فقط عدد):")
         elif state == "post_referral_price":
             try:
                 price = int(message.text)
-                with FSM_LOCK:
+                with FSM_STATES_LOCK:
                     FSM_STATES[user_id]["price"] = price
                     FSM_STATES[user_id]["state"] = "post_referral_phone"
                 keyboard = ReplyKeyboardMarkup(
@@ -607,7 +604,7 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
                 return
 
             if re.match(r"^(09\d{9}|\+98\d{10}|98\d{10})$", phone_number):
-                with FSM_LOCK:
+                with FSM_STATES_LOCK:
                     FSM_STATES[user_id]["phone"] = phone_number
                 await save_referral(update, context)
             else:
@@ -617,7 +614,7 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
     except Exception as e:
         logger.error(f"Error in post_referral_handle_message for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ خطایی رخ داد. لطفاً دوباره امتحان کنید.")
-        with FSM_LOCK:
+        with FSM_STATES_LOCK:
             if user_id in FSM_STATES:
                 del FSM_STATES[user_id]
 
@@ -996,7 +993,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ad_id = int(ad_id)
                 with get_db_connection() as conn:
                     ad = conn.execute(
-                        "SELECT user_id FROM ads WHERE id = ?", (ad_id,)
+                        "SELECT user_id FROM ads WHERE id = ?",
+                        (ad_id,)
                     ).fetchone()
                     if not ad:
                         logger.error(f"Ad with id {ad_id} not found")
@@ -1042,27 +1040,28 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             await context.bot.send_message(chat_id=user["user_id"], text=text)
                             await asyncio.sleep(0.1)
                         except Forbidden:
-                            logger.warning(f"User {user['user_id']} has blocked the bot.")
+                            logger.warning(f"User {user_id} has blocked the bot.")
                             with get_db_connection() as conn:
-                                conn.execute("UPDATE users SET blocked = 1 WHERE user_id = ?", (user['user_id'],))
+                                conn.execute("UPDATE users SET blocked = 1 WHERE user_id = ?, (user['user_id'],))
                                 conn.commit()
 
-                await query.message.reply_text("✅ پیام با موفقیت به همه ارسال شد.")
+                await query.message.reply_text("✅ پیام با موفقیت منتقل شد.")
             except Exception as e:
                 await query.message.reply_text(f"❌ خطا در ارسال: {e}")
             finally:
-                with FSM_LOCK:
-                    del FSM_STATES[user_id]
+                with FSM_STATES_LOCK:
+                    if user_id in FSM_STATES[user_id]:
+                        del FSM[user_id]
         else:
-            await query.message.reply_text("هشدار: دسترسی ندارید.")
+            await query.message.reply_text("😖 هشد")
     elif callback_data == "cancel_broadcast":
-        with FSM_LOCK:
+        with FSM_STATES_LOCK:
             if user_id in FSM_STATES:
                 del FSM_STATES[user_id]
-        await query.message.reply_text("❌ ارسال پیام لغو شد.")
+        await query.message.reply_text("❌ نستغرق الأخطاء لغو.")
     else:
         logger.warning(f"Unknown callback data: {callback_data}")
-        await query.message.reply_text("⚠️ گزینه ناشناخته.")
+        await query.message.reply_text("😖️")
 
 # مدیریت خطاها
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1070,7 +1069,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update and update.effective_message:
         try:
             await update.effective_message.reply_text(
-                "⚠️ خطایی در پردازش درخواست شما رخ داد. لطفاً دوباره تلاش کنید."
+                "⚠️‍♂️ خطاى في معالجة طلبك. لطفا حاول مرة أخرى."
             )
         except Exception as e:
             logger.error(f"Failed to send error message to user: {e}", exc_info=True)
@@ -1148,7 +1147,7 @@ async def init_main():
                     )
                     logger.debug(f"Webhook set response: {webhook_response}")
                 except Exception as e:
-                    logger.error(f"Failed to set webhook: {str(e)}", exc_info=True)
+                    logger.error(f"Error in set_webhook: {str(e)}", exc_info=True)
                     raise
                 logger.debug("Creating process update queue task...")
                 asyncio.create_task(process_update_queue())
