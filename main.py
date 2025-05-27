@@ -175,17 +175,23 @@ async def webhook(request):
         return web.Response(status=500, text='Internal Server Error')
 
 
-# مسیر سلامت
+# مسیر سلامت (بهبود برای UptimeRobot)
 async def health_check(request):
+    logger.debug("Health check requested")
     try:
-        with get_db_connection() as conn:
-            conn.execute("SELECT 1")
         if APPLICATION and APPLICATION.running:
             return web.Response(status=200, text='OK')
+        logger.warning("Application is not running")
         return web.Response(status=503, text='Application not running')
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return web.Response(status=500, text='Internal Server Error')
+
+
+# مسیر اختصاصی برای UptimeRobot
+async def uptime_check(request):
+    logger.debug("UptimeRobot health check requested")
+    return web.Response(status=200, text='OK')
 
 
 # پردازش صف آپدیت‌ها
@@ -1064,6 +1070,7 @@ async def run():
     ADMIN_ID = load_admins()
     app.router.add_post('/webhook', webhook)
     app.router.add_get('/', health_check)
+    app.router.add_get('/ping', uptime_check)  # مسیر جدید برای UptimeRobot
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', PORT)
@@ -1078,6 +1085,9 @@ async def run():
             await APPLICATION.bot.delete_webhook(drop_pending_updates=True)
             await APPLICATION.stop()
         await runner.cleanup()
+    except Exception as e:
+        logger.error(f"Error in run: {e}", exc_info=True)
+        raise
 
 
 if __name__ == '__main__':
