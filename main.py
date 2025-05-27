@@ -533,6 +533,7 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
 async def post_referral_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.debug(f"Entering post_referral_handle_message for user {user_id}")
+    
     with FSM_LOCK:
         if user_id not in FSM_STATES or "state" not in FSM_STATES[user_id]:
             logger.debug(f"No FSM state for user {user_id}, ignoring message")
@@ -542,8 +543,10 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
                 logger.error(f"Failed to send invalid state message to user {user_id}: {e}", exc_info=True)
             return
         state = FSM_STATES[user_id]["state"]
+    
     message = update.message
     logger.debug(f"Handling message for user {user_id} in state {state}")
+    
     try:
         if state == "post_referral_title":
             with FSM_LOCK:
@@ -554,7 +557,7 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
             with FSM_LOCK:
                 FSM_STATES[user_id]["description"] = message.text
                 FSM_STATES[user_id]["state"] = "post_referral_price"
-            await update.message.reply_text("لطفآ قیمت حواله را به تومان وارد کنید (فقط عدد):")
+            await update.message.reply_text("لطفاً قیمت حواله را به تومان وارد کنید (فقط عدد):")
         elif state == "post_referral_price":
             try:
                 price = int(message.text)
@@ -567,24 +570,40 @@ async def post_referral_handle_message(update: Update, context: ContextTypes.DEF
                     resize_keyboard=True
                 )
                 await update.message.reply_text(
-                    "لطفاً برای ارسال شماره تماس خود، روی دکمه زیر کلیک کنید:",
+                    "لطفاً شماره تماس خود را با استفاده از دکمه زیر یا تایپ دستی (با فرمت 09xxxxxxxxx یا +98xxxxxxxxxx) ارسال کنید:",
                     reply_markup=keyboard
                 )
             except ValueError:
                 await update.message.reply_text("لطفاً فقط عدد وارد کنید:")
         elif state == "post_referral_phone":
+            phone_number = None
             if message.contact:
                 phone_number = message.contact.phone_number
-                if re.match(r"^(09|\+98)\d{9}$", phone_number):
+            elif message.text:
+                phone_number = message.text.strip()
+            
+            if phone_number:
+                # تمیز کردن شماره
+                cleaned_phone = re.sub(r"\s+|-", "", phone_number)
+                logger.debug(f"Received phone number: {phone_number}, cleaned: {cleaned_phone}")
+                # اعتبارسنجی شماره تلفن
+                if re.match(r"^(09|\+98|98)\d{9,10}$", cleaned_phone):
                     with FSM_LOCK:
-                        FSM_STATES[user_id]["phone"] = phone_number
+                        FSM_STATES[user_id]["phone"] = cleaned_phone
                     await save_referral(update, context)
                 else:
                     await update.message.reply_text(
-                        "⚠️ شماره تلفن باید با 09 یا +98 شروع شود و 11 یا 12 رقم باشد. لطفاً دوباره روی دکمه کلیک کنید:"
+                        "⚠️ شماره تلفن باید با 09 یا +98 شروع شود و 11 یا 12 رقم باشد. لطفاً دوباره روی دکمه کلیک کنید یا شماره را تایپ کنید:"
                     )
             else:
-                await update.message.reply_text("لطفاً روی دکمه 'ارسال شماره تماس' کلیک کنید.")
+                await update.message.reply_text(
+                    "لطفاً شماره تماس خود را با استفاده از دکمه زیر یا تایپ دستی (با فرمت 09xxxxxxxxx یا +98xxxxxxxxxx) ارسال کنید:",
+                    reply_markup=ReplyKeyboardMarkup(
+                        [[KeyboardButton("📞 ارسال شماره تماس", request_contact=True)]],
+                        one_time_keyboard=True,
+                        resize_keyboard=True
+                    )
+                )
     except Exception as e:
         logger.error(f"Error in post_referral_handle_message for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ خطایی در پردازش درخواست شما رخ داد.")
