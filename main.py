@@ -376,44 +376,53 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
 
     try:
         if state == "post_ad_title":
-            FSM_STATES[user_id]["title"] = message.text
-            FSM_STATES[user_id]["state"] = "post_ad_description"
-            await update.message.reply_text(
-                "لطفا * اطلاعات خودرو * شامل رنگ ، کارکرد ، وضعیت بدنه ، وضعیت فنی و غیره را وارد نمایید.")
-        elif state == "post_ad_description":
-            message_text = update.message.text
             with FSM_LOCK:
-                FSM_STATES[user_id]["description"] = message_text
+                FSM_STATES[user_id]["title"] = message.text
+                FSM_STATES[user_id]["state"] = "post_ad_description"
+            await update.message.reply_text(
+                "لطفا *اطلاعات خودرو* شامل رنگ، کارکرد، وضعیت بدنه، وضعیت فنی و غیره را وارد نمایید.",
+                parse_mode="Markdown"
+            )
+        elif state == "post_ad_description":
+            with FSM_LOCK:
+                FSM_STATES[user_id]["description"] = message.text
                 FSM_STATES[user_id]["state"] = "post_ad_price"
-            await update.message.reply_text("*لطفاً قیمت آگهی را به تومان وارد کنید *(فقط عدد):")
+            await update.message.reply_text(
+                "*لطفاً قیمت آگهی را به تومان وارد کنید* (فقط عدد):",
+                parse_mode="Markdown"
+            )
         elif state == "post_ad_price":
-            message_text = update.message.text
             try:
-                price = int(message_text)
+                price = int(message.text)
                 with FSM_LOCK:
                     FSM_STATES[user_id]["price"] = price
                     FSM_STATES[user_id]["state"] = "post_ad_phone"
-                    keyboard = ReplyKeyboardMarkup(
-                     [[KeyboardButton("📞 ارسال شماره تماس", request_contact=True)]],
-                     one_time_keyboard=True,
-                     resize_keyboard=True
-                    )
-                await update.message.reply_text(
-                "لطفاً برای ارسال شماره تماس خود، روی دکمه زیر کلیک کنید یا شماره خود را تایپ کنید (باید با 09 یا +98 یا 98 شروع شود):",
-                reply_markup=keyboard
+                keyboard = ReplyKeyboardMarkup(
+                    [[KeyboardButton("📞 ارسال شماره تماس", request_contact=True)]],
+                    one_time_keyboard=True,
+                    resize_keyboard=True
                 )
                 await update.message.reply_text(
-                    "لطفاً برای ارسال شماره تماس خود، روی دکمه زیر کلیک کنید:",
+                    "لطفاً شماره تماس خود را با استفاده از دکمه زیر یا تایپ دستی (با فرمت 09xxxxxxxxx یا +98xxxxxxxxxx) ارسال کنید:",
                     reply_markup=keyboard
                 )
             except ValueError:
                 await update.message.reply_text("لطفاً فقط عدد وارد کنید:")
         elif state == "post_ad_phone":
+            phone_number = None
             if message.contact:
                 phone_number = message.contact.phone_number
-                if re.match(r"^(09|\+98)\d{9}$", phone_number):
+            elif message.text:
+                phone_number = message.text.strip()
+            
+            if phone_number:
+                # تمیز کردن شماره (حذف فاصله، خط تیره و غیره)
+                cleaned_phone = re.sub(r"\s+|-", "", phone_number)
+                logger.debug(f"Received phone number: {phone_number}, cleaned: {cleaned_phone}")
+                # اعتبارسنجی شماره تلفن
+                if re.match(r"^(09|\+98|98)\d{9,10}$", cleaned_phone):
                     with FSM_LOCK:
-                        FSM_STATES[user_id]["phone"] = phone_number
+                        FSM_STATES[user_id]["phone"] = cleaned_phone
                         FSM_STATES[user_id]["state"] = "post_ad_image"
                         FSM_STATES[user_id]["images"] = []
                     await update.message.reply_text(
@@ -422,10 +431,17 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                     )
                 else:
                     await update.message.reply_text(
-                        "⚠️ شماره تلفن باید با 09 یا +98 شروع شود و 11 یا 12 رقم باشد. لطفاً دوباره روی دکمه کلیک کنید:"
+                        "⚠️ شماره تلفن باید با 09 یا +98 شروع شود و 11 یا 12 رقم باشد. لطفاً دوباره روی دکمه کلیک کنید یا شماره را تایپ کنید:"
                     )
             else:
-                await update.message.reply_text("لطفاً روی دکمه 'ارسال شماره تماس' کلیک کنید.")
+                await update.message.reply_text(
+                    "لطفاً شماره تماس خود را با استفاده از دکمه زیر یا تایپ دستی (با فرمت 09xxxxxxxxx یا +98xxxxxxxxxx) ارسال کنید:",
+                    reply_markup=ReplyKeyboardMarkup(
+                        [[KeyboardButton("📞 ارسال شماره تماس", request_contact=True)]],
+                        one_time_keyboard=True,
+                        resize_keyboard=True
+                    )
+                )
         elif state == "post_ad_image":
             if message.text == "/done":
                 if not FSM_STATES[user_id].get("images"):
@@ -455,7 +471,8 @@ async def post_ad_handle_message(update: Update, context: ContextTypes.DEFAULT_T
                         ad_id = cursor.lastrowid
                         conn.commit()
                         logger.debug(
-                            f"Ad saved for user {user_id} with id {ad_id} and {len(FSM_STATES[user_id]['images'])} images")
+                            f"Ad saved for user {user_id} with id {ad_id} and {len(FSM_STATES[user_id]['images'])} images"
+                        )
 
                     await message.reply_text(
                         "✅ آگهی شما با موفقیت ثبت شد و در انتظار تأیید ادمین است."
