@@ -54,7 +54,7 @@ if not all([BOT_TOKEN, WEBHOOK_URL, CHANNEL_ID, CHANNEL_URL]):
 update_queue = queue.Queue()
 app = web.Application()
 APPLICATION = None
-ADMIN_ID = [5677216420 , 65838227696]
+ADMIN_ID = [65838227696]
 current_pages = {}
 
 
