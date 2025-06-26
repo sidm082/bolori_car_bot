@@ -1076,6 +1076,9 @@ def get_application():
 
 
 # تابع اصلی
+# ... (بقیه کد بدون تغییر)
+
+# تابع اصلی
 async def main():
     logger.debug("Starting main function...")
     try:
@@ -1085,6 +1088,7 @@ async def main():
         APPLICATION = get_application()
         await APPLICATION.initialize()
         logger.debug("Application initialized.")
+        await APPLICATION.start()  # اضافه شده برای تنظیم APPLICATION.running
         await APPLICATION.bot.delete_webhook(drop_pending_updates=True)
         logger.debug("Webhook deleted.")
         await APPLICATION.bot.set_webhook(
@@ -1098,7 +1102,6 @@ async def main():
         logger.error(f"Error in main: {e}", exc_info=True)
         raise
 
-
 # تابع اجرا
 async def run():
     init_db()
@@ -1106,7 +1109,7 @@ async def run():
     ADMIN_ID = load_admins()
     app.router.add_post('/webhook', webhook)
     app.router.add_get('/', health_check)
-    app.router.add_get('/ping', uptime_check)  # مسیر جدید برای UptimeRobot
+    app.router.add_get('/ping', uptime_check)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', PORT)
@@ -1125,13 +1128,5 @@ async def run():
         logger.error(f"Error in run: {e}", exc_info=True)
         raise
 
-
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(run())
-        loop.run_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        loop.close()
+    asyncio.run(run())  # استفاده از asyncio.run برای جلوگیری از هشدار
