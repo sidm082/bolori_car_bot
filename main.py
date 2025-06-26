@@ -54,7 +54,7 @@ if not all([BOT_TOKEN, WEBHOOK_URL, CHANNEL_ID, CHANNEL_URL]):
 update_queue = queue.Queue()
 app = web.Application()
 APPLICATION = None
-ADMIN_ID =[6583827696]
+ADMIN_ID = [6583827696, 8122737247] 
 current_pages = {}
 
 
@@ -77,14 +77,17 @@ def init_db():
                        status TEXT, image_id TEXT, phone TEXT)''')
         conn.execute('''CREATE TABLE IF NOT EXISTS admins
                       (user_id INTEGER PRIMARY KEY)''')
-        conn.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (5677216420,))
+        # پاک کردن ادمین‌های قدیمی و افزودن ادمین‌های جدید
+        conn.execute('DELETE FROM admins')
+        conn.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (6583827696,))
+        conn.execute('INSERT OR IGNORE INTO admins (user_id) VALUES (?)', (8122737247,))
         conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_status
                       ON ads (status)''')
         conn.execute('''CREATE INDEX IF NOT EXISTS idx_ads_approved 
-                  ON ads (status, created_at DESC)''')
+                      ON ads (status, created_at DESC)''')
         conn.commit()
         conn.execute('''CREATE INDEX IF NOT EXISTS idx_users_id 
-                  ON users (user_id)''')
+                      ON users (user_id)''')
         conn.commit()
         logger.debug("Database initialized successfully.")
 
