@@ -157,22 +157,36 @@ async def broadcast_ad(context: ContextTypes.DEFAULT_TYPE, ad):
 # مسیر Webhook
 async def webhook(request):
     logger.debug("Received webhook request")
+    # لاگ اضافی برای نمایش هدرها و بدنه درخواست
+    logger.debug(f"Request headers: {dict(request.headers)}")
+    logger.debug(f"Request body: {await request.text()}")
+
     if not APPLICATION:
         logger.error("Application is not initialized")
         return web.Response(status=500, text='Application not initialized')
+    
     start_time = time.time()
+    
+    # چک کردن توکن امنیتی
     if WEBHOOK_SECRET and request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
         logger.warning("Invalid webhook secret token")
         return web.Response(status=401, text='Unauthorized')
+    
     try:
         json_data = await request.json()
         if not json_data:
             logger.error("Empty webhook data received")
             return web.Response(status=400, text='Bad Request')
+        
         update_queue.put(json_data)
         logger.debug(f"Queue size after putting update: {update_queue.qsize()}")
         logger.info(f"Webhook update queued in {time.time() - start_time:.2f} seconds")
         return web.Response(status=200)
+    
+    except json.JSONDecodeError as e:
+        # مدیریت خاص خطای JSON
+        logger.error(f"Invalid JSON data received: {e}", exc_info=True)
+        return web.Response(status=400, text='Invalid JSON data')
     except Exception as e:
         logger.error(f"Error processing webhook: {e}", exc_info=True)
         return web.Response(status=500, text='Internal Server Error')
