@@ -1110,7 +1110,7 @@ async def run():
     init_db()
     global ADMIN_ID, APPLICATION
     ADMIN_ID = load_admins()
-    app.router.add_post('/webhook', webhook)
+    app.router.add_post('/', webhook)  # تغییر به ریشه
     app.router.add_get('/', health_check)
     app.router.add_get('/ping', uptime_check)
     runner = web.AppRunner(app)
